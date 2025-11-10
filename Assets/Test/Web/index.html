@@ -125,10 +125,12 @@
 
     <script>
         // -----------------------------------------------------------------
-        // AWS AppSync 設定情報
+        // AWS AppSync 設定情報（Unityと同じ値に合わせてください）
         // -----------------------------------------------------------------
-        const APP_SYNC_URL = "https://thyvvhs3wnfajkv5mg5agx2hfm.appsync-api.ap-northeast-1.amazonaws.com/graphql";
-        const API_KEY = "da2-q5wrt2h47nb4zfsld3wffd2xga";
+        const APP_SYNC_API_ID = "k5fxcxsvbbathdhik52l5hegrq";
+        const APP_SYNC_REGION = "ap-northeast-1";
+        const APP_SYNC_URL = `https://${APP_SYNC_API_ID}.appsync-api.${APP_SYNC_REGION}.amazonaws.com/graphql`;
+        const API_KEY = "da2-jhqtdoi3qjdrph6atduxm254wq";
         const SUBSCRIPTION_CHANNEL_NAME = "gyro";
         // -----------------------------------------------------------------
 
