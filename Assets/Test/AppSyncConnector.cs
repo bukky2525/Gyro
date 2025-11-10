@@ -141,18 +141,28 @@ public class AppSyncConnector : MonoBehaviour
                     break;
                     
                 case "error":
-                    Debug.LogError($"【AppSync】❌ エラー受信");
-                    Debug.LogError($"【AppSync】エラーメッセージ全文: {message}");
+                    Debug.LogError("【スマホ接続確認】==========================================");
+                    Debug.LogError("【スマホ接続確認】❌ エラーが発生しました");
+                    Debug.LogError("【スマホ接続確認】スマホからのジャイロデータを受信できません");
+                    Debug.LogError($"【スマホ接続確認】エラーメッセージ全文: {message}");
                     
                     // エラーの詳細を解析（簡易版）
                     if (message.Contains("UnsupportedOperation"))
                     {
-                        Debug.LogError("【AppSync】❌ UnsupportedOperation: サブスクリプションクエリが認識されていません。");
-                        Debug.LogError("【AppSync】考えられる原因:");
-                        Debug.LogError("1. サブスクリプション名がスキーマと一致していない");
-                        Debug.LogError("2. GraphQLクエリの構文エラー");
-                        Debug.LogError("3. エンドポイントのスキーマが異なる");
+                        Debug.LogError("【スマホ接続確認】❌ UnsupportedOperation エラー");
+                        Debug.LogError("【スマホ接続確認】サブスクリプションクエリが認識されていません");
+                        Debug.LogError("【スマホ接続確認】");
+                        Debug.LogError("【スマホ接続確認】🔍 確認事項:");
+                        Debug.LogError("【スマホ接続確認】1. AppSyncコンソールでスキーマが正しく設定されているか確認");
+                        Debug.LogError("【スマホ接続確認】2. AppSyncコンソールでリゾルバーが正しく設定されているか確認");
+                        Debug.LogError("【スマホ接続確認】3. AppSyncコンソールの「クエリ」タブでサブスクリプションが動作するか確認");
+                        Debug.LogError("【スマホ接続確認】4. Unityアプリケーションが接続しているAPIエンドポイントが正しいか確認");
+                        Debug.LogError("【スマホ接続確認】5. APIキーが正しいか確認");
+                        Debug.LogError("【スマホ接続確認】");
+                        Debug.LogError($"【スマホ接続確認】現在のエンドポイント: {APP_SYNC_URL}");
+                        Debug.LogError($"【スマホ接続確認】現在のAPIキー: {API_KEY.Substring(0, Math.Min(10, API_KEY.Length))}...");
                     }
+                    Debug.LogError("【スマホ接続確認】==========================================");
                     break;
                     
                 case "ka":
