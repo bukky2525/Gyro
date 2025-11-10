@@ -122,6 +122,14 @@
             <span class="gyro-unit">° (-90 to 90)</span>
         </div>
     </div>
+    <div style="margin-top:16px;">
+        <button id="sendDummyBtn" style="padding:8px 16px;">ダミー送信（テスト）</button>
+    </div>
+    <div style="margin-top:16px; text-align:left;">
+        <div style="font-weight:bold;">デバッグログ</div>
+        <pre id="debugLog" style="background:#111;color:#0f0;padding:12px;border-radius:6px;max-height:220px;overflow:auto;white-space:pre-wrap;"></pre>
+        <div style="font-size:12px;color:#666;margin-top:4px;">最新100件まで保持</div>
+    </div>
 
     <script>
         // -----------------------------------------------------------------
@@ -140,12 +148,31 @@
         const gammaEl = document.getElementById("gamma");
         const connectBtn = document.getElementById("connectBtn");
         const enableGyroBtn = document.getElementById("enableGyroBtn");
+        const debugEl = document.getElementById("debugLog");
+        const sendDummyBtn = document.getElementById("sendDummyBtn");
         
         let isConnected = false;
         let gyroListener = null;
         let motionListener = null;
         let gyroEnabled = false;
         let dataReceived = false;
+        let gyroEventCount = 0;
+        let lastSendTs = 0;
+        const SEND_INTERVAL_MS = 250; // 送信頻度（デバッグでサーバー負荷を抑制）
+
+        // デバッグ出力
+        const _logs = [];
+        function dlog(msg) {
+            const ts = new Date().toISOString();
+            const line = `[${ts}] ${msg}`;
+            console.log(line);
+            _logs.push(line);
+            if (_logs.length > 100) _logs.shift();
+            if (debugEl) {
+                debugEl.textContent = _logs.join("\n");
+                debugEl.scrollTop = debugEl.scrollHeight;
+            }
+        }
 
         // ジャイロデータを数値で表示する関数
         function updateGyroDisplay(alpha, beta, gamma) {
@@ -176,6 +203,7 @@
                 // iOS 13+ の場合、明示的な許可が必要
                 DeviceOrientationEvent.requestPermission()
                     .then(response => {
+                        dlog(`DeviceOrientation permission response: ${response}`);
                         if (response == 'granted') {
                             startGyroListeners();
                             statusEl.innerText = "ジャイロセンサーが有効になりました！データを取得しています。";
@@ -184,11 +212,13 @@
                         } else {
                             statusEl.innerText = "ジャイロセンサーの許可が拒否されました。ブラウザの設定から許可してください。";
                             console.error("ジャイロセンサーの許可が拒否されました");
+                            dlog("Permission denied for DeviceOrientation");
                         }
                     })
                     .catch(error => {
                         statusEl.innerText = `ジャイロセンサーの許可エラー: ${error.message}`;
                         console.error("ジャイロセンサーの許可エラー:", error);
+                        dlog(`Permission request error: ${error?.message || error}`);
                         // 許可APIが使えない場合、通常の方法を試す
                         startGyroListeners();
                         updateGyroButtonState(true);
@@ -200,6 +230,7 @@
                 statusEl.innerText = "ジャイロセンサーを有効化しました。データを取得しています。";
                 updateGyroButtonState(true);
                 connectBtn.disabled = false;
+                dlog("DeviceOrientation permission API not required; listeners started.");
             }
         }
 
@@ -222,6 +253,7 @@
 
             gyroEnabled = false;
             dataReceived = false;
+            gyroEventCount = 0;
             
             // 表示をリセット
             updateGyroDisplay(null, null, null);
@@ -234,6 +266,7 @@
             statusEl.innerText = "ジャイロセンサーを無効化しました。";
             updateGyroButtonState(false);
             connectBtn.disabled = true;
+            dlog("Gyro disabled and connection closed (if any).");
         }
 
         // ジャイロボタンの状態を更新
@@ -260,13 +293,21 @@
                 // データが取得できたかチェック
                 if (alpha !== null && beta !== null && gamma !== null) {
                     dataReceived = true;
+                    gyroEventCount++;
                     
                     // 数値で表示
                     updateGyroDisplay(alpha, beta, gamma);
+                    if (gyroEventCount % 10 === 1) {
+                        dlog(`DeviceOrientation: alpha=${alpha?.toFixed?.(2)}, beta=${beta?.toFixed?.(2)}, gamma=${gamma?.toFixed?.(2)} (events=${gyroEventCount})`);
+                    }
 
                     // 接続している場合のみAppSyncにデータを送信
                     if (isConnected) {
-                        publishToAppSync(alpha, beta, gamma);
+                        const now = Date.now();
+                        if (now - lastSendTs >= SEND_INTERVAL_MS) {
+                            lastSendTs = now;
+                            publishToAppSync(alpha, beta, gamma);
+                        }
                     }
                 }
             };
@@ -281,6 +322,9 @@
                     
                     if (alpha !== null || beta !== null || gamma !== null) {
                         dataReceived = true;
+                        if (gyroEventCount % 30 === 1) {
+                            dlog(`DeviceMotion rotationRate: a=${alpha}, b=${beta}, g=${gamma}`);
+                        }
                     }
                 }
             };
@@ -291,11 +335,13 @@
             }
             
             gyroEnabled = true;
+            dlog("Gyro listeners started.");
 
             // データが取得できない場合のタイムアウト
             setTimeout(() => {
                 if (!dataReceived && gyroEnabled) {
                     statusEl.innerText = "ジャイロデータが取得できていません。デバイスを傾けてみてください。または、ブラウザの設定でセンサーへのアクセスを許可してください。";
+                    dlog("No gyro data received within 3s after enabling.");
                 }
             }, 3000);
         }
@@ -312,6 +358,7 @@
                 enableGyroBtn.disabled = true;
                 connectBtn.disabled = true;
                 updateGyroDisplay(null, null, null);
+                dlog("This device/browser does not support gyro sensors.");
             }
         }
 
@@ -325,6 +372,15 @@
                 connectToAppSync();
             }
         });
+        // ダミー送信
+        sendDummyBtn.addEventListener("click", () => {
+            if (!isConnected) {
+                dlog("Not connected flag yet. Enabling connect flag.");
+                connectToAppSync();
+            }
+            dlog("Sending dummy payload to AppSync...");
+            publishToAppSync(123.45, 67.89, 10.11);
+        });
 
         // AppSyncに接続する関数（実際には接続不要、すぐに使用可能）
         function connectToAppSync() {
@@ -333,6 +389,7 @@
             connectBtn.textContent = "切断";
             connectBtn.classList.add("connected");
             console.log("AppSyncに接続しました（APIキー認証のため接続不要）");
+            dlog(`Connect flag set. Endpoint=${APP_SYNC_URL}`);
         }
 
         // AppSyncから切断する関数
@@ -342,6 +399,7 @@
             connectBtn.textContent = "AppSyncに接続";
             connectBtn.classList.remove("connected");
             console.log("AppSyncから切断しました");
+            dlog("Connect flag cleared.");
         }
 
         // AppSyncにデータを発行する関数
@@ -381,20 +439,25 @@
                     })
                 });
 
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
+                const text = await response.text();
+                dlog(`Publish HTTP status=${response.status} ${response.statusText}`);
+                dlog(`Publish raw response: ${text}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
 
-                const result = await response.json();
+                let result = {};
+                try { result = JSON.parse(text); } catch {}
                 
                 if (result.errors) {
                     console.error("GraphQL Error:", result.errors);
+                    dlog(`GraphQL errors: ${JSON.stringify(result.errors)}`);
                 } else {
                     console.log("データを発行しました:", result.data);
+                    dlog("Publish OK");
                 }
 
             } catch (error) {
                 console.error("AppSync Publish Error:", error);
+                dlog(`Publish error: ${error?.message || error}`);
             }
         }
 
