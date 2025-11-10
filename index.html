@@ -41,6 +41,29 @@
         #connectBtn.connected:hover {
             background-color: #da190b;
         }
+        #enableGyroBtn {
+            font-size: 1.1em;
+            padding: 12px 25px;
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        #enableGyroBtn:hover {
+            background-color: #1976D2;
+        }
+        #enableGyroBtn:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        #enableGyroBtn.enabled {
+            background-color: #4CAF50;
+        }
+        #enableGyroBtn.enabled:hover {
+            background-color: #45a049;
+        }
         #data {
             background-color: #f9f9f9;
             padding: 20px;
@@ -80,8 +103,9 @@
 </head>
 <body>
     <h1>ジャイロ センサー</h1>
-    <p id="status">ジャイロセンサーの許可が必要です。画面をタッチしてください。</p>
-    <button id="connectBtn">AWS IoT Coreに接続</button>
+    <p id="status">まず「ジャイロを有効化」ボタンを押してジャイロセンサーの許可を与えてください。</p>
+    <button id="enableGyroBtn">ジャイロを有効化</button>
+    <button id="connectBtn" disabled>AWS IoT Coreに接続</button>
     <div id="data">
         <div class="gyro-value">
             <span class="gyro-label">Alpha (Z軸):</span>
@@ -117,11 +141,14 @@
         const betaEl = document.getElementById("beta");
         const gammaEl = document.getElementById("gamma");
         const connectBtn = document.getElementById("connectBtn");
+        const enableGyroBtn = document.getElementById("enableGyroBtn");
         
         let mqttClient = null;
         let isConnected = false;
         let gyroListener = null;
+        let motionListener = null;
         let gyroEnabled = false;
+        let dataReceived = false;
 
         // ジャイロデータを数値で表示する関数
         function updateGyroDisplay(alpha, beta, gamma) {
@@ -130,55 +157,120 @@
             gammaEl.textContent = gamma !== null && gamma !== undefined ? gamma.toFixed(2) : "---";
         }
 
+        // ジャイロを有効化する関数
+        function enableGyroSensor() {
+            if (gyroEnabled) {
+                statusEl.innerText = "ジャイロセンサーは既に有効です。";
+                return;
+            }
+
+            // DeviceOrientationEventのサポート確認
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                // iOS 13+ の場合、明示的な許可が必要
+                DeviceOrientationEvent.requestPermission()
+                    .then(response => {
+                        if (response == 'granted') {
+                            startGyroListeners();
+                            statusEl.innerText = "ジャイロセンサーが有効になりました！データを取得しています。";
+                            enableGyroBtn.textContent = "ジャイロ有効 ✓";
+                            enableGyroBtn.classList.add("enabled");
+                            enableGyroBtn.disabled = true;
+                            connectBtn.disabled = false;
+                        } else {
+                            statusEl.innerText = "ジャイロセンサーの許可が拒否されました。ブラウザの設定から許可してください。";
+                            console.error("ジャイロセンサーの許可が拒否されました");
+                        }
+                    })
+                    .catch(error => {
+                        statusEl.innerText = `ジャイロセンサーの許可エラー: ${error.message}`;
+                        console.error("ジャイロセンサーの許可エラー:", error);
+                        // 許可APIが使えない場合、通常の方法を試す
+                        startGyroListeners();
+                    });
+            } else {
+                // 通常のブラウザ（許可APIなし）
+                startGyroListeners();
+                statusEl.innerText = "ジャイロセンサーを有効化しました。データを取得しています。";
+                enableGyroBtn.textContent = "ジャイロ有効 ✓";
+                enableGyroBtn.classList.add("enabled");
+                enableGyroBtn.disabled = true;
+                connectBtn.disabled = false;
+            }
+        }
+
+        // ジャイロリスナーを開始
+        function startGyroListeners() {
+            if (gyroEnabled) return;
+
+            // DeviceOrientationEvent（デバイスの向き）
+            gyroListener = (event) => {
+                const alpha = event.alpha;
+                const beta = event.beta;
+                const gamma = event.gamma;
+
+                // データが取得できたかチェック
+                if (alpha !== null && beta !== null && gamma !== null) {
+                    dataReceived = true;
+                    
+                    // 数値で表示
+                    updateGyroDisplay(alpha, beta, gamma);
+
+                    // 接続している場合のみMQTTトピックに送信
+                    if (isConnected && mqttClient) {
+                        mqttClient.publish(
+                            GYRO_TOPIC,
+                            JSON.stringify({
+                                alpha: alpha,
+                                beta: beta,
+                                gamma: gamma
+                            }),
+                            awsiot.mqtt.QoS.AtLeastOnce
+                        ).catch((pubError) => {
+                            console.warn("Publish Error:", pubError);
+                        });
+                    }
+                }
+            };
+
+            // DeviceMotionEvent（デバイスの動き）- より正確なデータ
+            motionListener = (event) => {
+                if (event.rotationRate) {
+                    // ジャイロデータが利用可能な場合
+                    const alpha = event.rotationRate.alpha;
+                    const beta = event.rotationRate.beta;
+                    const gamma = event.rotationRate.gamma;
+                    
+                    if (alpha !== null || beta !== null || gamma !== null) {
+                        dataReceived = true;
+                    }
+                }
+            };
+
+            window.addEventListener("deviceorientation", gyroListener, true);
+            if (window.DeviceMotionEvent) {
+                window.addEventListener("devicemotion", motionListener, true);
+            }
+            
+            gyroEnabled = true;
+
+            // データが取得できない場合のタイムアウト
+            setTimeout(() => {
+                if (!dataReceived && gyroEnabled) {
+                    statusEl.innerText = "ジャイロデータが取得できていません。デバイスを傾けてみてください。または、ブラウザの設定でセンサーへのアクセスを許可してください。";
+                }
+            }, 3000);
+        }
+
         // ジャイロデータの表示（接続前から開始）
         function setupGyroDisplay() {
-            if (window.DeviceOrientationEvent) {
-                // iOS 13以降では、ユーザーのジェスチャー（タッチなど）が必要
-                // ユーザーが画面をタッチしたときにジャイロイベントを有効化
-                const enableGyro = () => {
-                    if (gyroEnabled) return;
-                    
-                    gyroListener = (event) => {
-                        const alpha = event.alpha;
-                        const beta = event.beta;
-                        const gamma = event.gamma;
-
-                        // 数値で表示
-                        updateGyroDisplay(alpha, beta, gamma);
-
-                        // 接続している場合のみMQTTトピックに送信
-                        if (isConnected && mqttClient) {
-                            mqttClient.publish(
-                                GYRO_TOPIC,
-                                JSON.stringify({
-                                    alpha: alpha,
-                                    beta: beta,
-                                    gamma: gamma
-                                }),
-                                awsiot.mqtt.QoS.AtLeastOnce
-                            ).catch((pubError) => {
-                                console.warn("Publish Error:", pubError);
-                            });
-                        }
-                    };
-                    
-                    window.addEventListener("deviceorientation", gyroListener, true);
-                    gyroEnabled = true;
-                    statusEl.innerText = "ジャイロセンサーが有効になりました。接続ボタンを押してAWS IoT Coreに接続してください。";
-                };
-
-                // ユーザーのジェスチャーでジャイロを有効化
-                // タッチ、クリック、マウス移動などのイベントで有効化
-                const userGestureEvents = ['touchstart', 'click', 'mousedown'];
-                userGestureEvents.forEach(eventType => {
-                    document.addEventListener(eventType, enableGyro, { once: true, passive: true });
-                });
-
-                // 最初のメッセージを表示
-                statusEl.innerText = "ジャイロセンサーの許可が必要です。画面をタッチしてください。";
+            if (window.DeviceOrientationEvent || window.DeviceMotionEvent) {
+                // ジャイロ有効化ボタンのイベントリスナー
+                enableGyroBtn.addEventListener("click", enableGyroSensor);
                 
+                statusEl.innerText = "「ジャイロを有効化」ボタンを押してジャイロセンサーの許可を与えてください。";
             } else {
                 statusEl.innerText = "このデバイスはジャイロをサポートしていません";
+                enableGyroBtn.disabled = true;
                 connectBtn.disabled = true;
                 updateGyroDisplay(null, null, null);
             }
@@ -186,41 +278,6 @@
 
         // 接続ボタンのイベントリスナー
         connectBtn.addEventListener("click", async () => {
-            // ボタンクリック時にもジャイロを有効化
-            if (!gyroEnabled) {
-                const enableGyro = () => {
-                    if (gyroEnabled) return;
-                    
-                    gyroListener = (event) => {
-                        const alpha = event.alpha;
-                        const beta = event.beta;
-                        const gamma = event.gamma;
-
-                        // 数値で表示
-                        updateGyroDisplay(alpha, beta, gamma);
-
-                        // 接続している場合のみMQTTトピックに送信
-                        if (isConnected && mqttClient) {
-                            mqttClient.publish(
-                                GYRO_TOPIC,
-                                JSON.stringify({
-                                    alpha: alpha,
-                                    beta: beta,
-                                    gamma: gamma
-                                }),
-                                awsiot.mqtt.QoS.AtLeastOnce
-                            ).catch((pubError) => {
-                                console.warn("Publish Error:", pubError);
-                            });
-                        }
-                    };
-                    
-                    window.addEventListener("deviceorientation", gyroListener, true);
-                    gyroEnabled = true;
-                };
-                enableGyro();
-            }
-            
             if (isConnected) {
                 // 切断処理
                 await disconnectFromAWS();
