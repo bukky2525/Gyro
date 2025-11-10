@@ -59,10 +59,10 @@
             cursor: not-allowed;
         }
         #enableGyroBtn.enabled {
-            background-color: #4CAF50;
+            background-color: #ff9800;
         }
         #enableGyroBtn.enabled:hover {
-            background-color: #45a049;
+            background-color: #f57c00;
         }
         #data {
             background-color: #f9f9f9;
@@ -106,6 +106,7 @@
     <p id="status">まず「ジャイロを有効化」ボタンを押してジャイロセンサーの許可を与えてください。</p>
     <button id="enableGyroBtn">ジャイロを有効化</button>
     <button id="connectBtn" disabled>AWS IoT Coreに接続</button>
+    <p style="font-size: 0.9em; color: #666; margin-top: 10px;">※ ジャイロを無効化すると、AWS IoT Coreとの接続も自動的に切断されます。</p>
     <div id="data">
         <div class="gyro-value">
             <span class="gyro-label">Alpha (Z軸):</span>
@@ -157,10 +158,20 @@
             gammaEl.textContent = gamma !== null && gamma !== undefined ? gamma.toFixed(2) : "---";
         }
 
+        // ジャイロを有効化/無効化する関数（トグル）
+        function toggleGyroSensor() {
+            if (gyroEnabled) {
+                // ジャイロを無効化
+                disableGyroSensor();
+            } else {
+                // ジャイロを有効化
+                enableGyroSensor();
+            }
+        }
+
         // ジャイロを有効化する関数
         function enableGyroSensor() {
             if (gyroEnabled) {
-                statusEl.innerText = "ジャイロセンサーは既に有効です。";
                 return;
             }
 
@@ -172,9 +183,7 @@
                         if (response == 'granted') {
                             startGyroListeners();
                             statusEl.innerText = "ジャイロセンサーが有効になりました！データを取得しています。";
-                            enableGyroBtn.textContent = "ジャイロ有効 ✓";
-                            enableGyroBtn.classList.add("enabled");
-                            enableGyroBtn.disabled = true;
+                            updateGyroButtonState(true);
                             connectBtn.disabled = false;
                         } else {
                             statusEl.innerText = "ジャイロセンサーの許可が拒否されました。ブラウザの設定から許可してください。";
@@ -186,15 +195,59 @@
                         console.error("ジャイロセンサーの許可エラー:", error);
                         // 許可APIが使えない場合、通常の方法を試す
                         startGyroListeners();
+                        updateGyroButtonState(true);
+                        connectBtn.disabled = false;
                     });
             } else {
                 // 通常のブラウザ（許可APIなし）
                 startGyroListeners();
                 statusEl.innerText = "ジャイロセンサーを有効化しました。データを取得しています。";
-                enableGyroBtn.textContent = "ジャイロ有効 ✓";
-                enableGyroBtn.classList.add("enabled");
-                enableGyroBtn.disabled = true;
+                updateGyroButtonState(true);
                 connectBtn.disabled = false;
+            }
+        }
+
+        // ジャイロを無効化する関数
+        function disableGyroSensor() {
+            if (!gyroEnabled) {
+                return;
+            }
+
+            // リスナーを削除
+            if (gyroListener) {
+                window.removeEventListener("deviceorientation", gyroListener, true);
+                gyroListener = null;
+            }
+            
+            if (motionListener) {
+                window.removeEventListener("devicemotion", motionListener, true);
+                motionListener = null;
+            }
+
+            gyroEnabled = false;
+            dataReceived = false;
+            
+            // 表示をリセット
+            updateGyroDisplay(null, null, null);
+            
+            // 接続している場合は切断
+            if (isConnected) {
+                disconnectFromAWS();
+            }
+            
+            statusEl.innerText = "ジャイロセンサーを無効化しました。";
+            updateGyroButtonState(false);
+            connectBtn.disabled = true;
+        }
+
+        // ジャイロボタンの状態を更新
+        function updateGyroButtonState(enabled) {
+            if (enabled) {
+                enableGyroBtn.textContent = "ジャイロを無効化";
+                enableGyroBtn.classList.add("enabled");
+            } else {
+                enableGyroBtn.textContent = "ジャイロを有効化";
+                enableGyroBtn.classList.remove("enabled");
             }
         }
 
@@ -264,8 +317,8 @@
         // ジャイロデータの表示（接続前から開始）
         function setupGyroDisplay() {
             if (window.DeviceOrientationEvent || window.DeviceMotionEvent) {
-                // ジャイロ有効化ボタンのイベントリスナー
-                enableGyroBtn.addEventListener("click", enableGyroSensor);
+                // ジャイロ有効化/無効化ボタンのイベントリスナー
+                enableGyroBtn.addEventListener("click", toggleGyroSensor);
                 
                 statusEl.innerText = "「ジャイロを有効化」ボタンを押してジャイロセンサーの許可を与えてください。";
             } else {
