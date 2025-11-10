@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ジャイロ センサー送信</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: sans-serif; text-align: center; }
+        #status { font-size: 1.2em; }
+    </style>
+    
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1149.0.min.js"></script>
+    <script src="https://unpkg.com/aws-iot-device-sdk-v2@1.11.0/dist/browser/aws-iot-device-sdk-v2.min.js"></script>
+</head>
+<body>
+    <h1>ジャイロ センサー</h1>
+    <p id="status">AWSに接続中...</p>
+    <pre id="data">スマホを傾けてください</pre>
+
+    <script>
+        // -----------------------------------------------------------------
+        // AWS設定情報
+        // -----------------------------------------------------------------
+        const IOT_ENDPOINT = "a3uber9b61jkrc-ats.iot.ap-northeast-1.amazonaws.com"; // AWS IoTエンドポイント
+        // TODO: 以下のCognito ID プール IDをAWSコンソールから取得して設定してください
+        // AWSコンソール > Cognito > IDプール > GyroWebSiteGuestRole のIDプールIDをコピー
+        const COGNITO_ID_POOL_ID = "ap-northeast-1:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"; // あなたのCognito ID プール ID
+        const AWS_REGION = "ap-northeast-1";
+        const GYRO_TOPIC = "unity/gyro_input"; // Unityで購読しているトピック
+        // -----------------------------------------------------------------
+
+        const statusEl = document.getElementById("status");
+        const dataEl = document.getElementById("data");
+
+        // 1. AWS Cognito 認証情報の設定
+        AWS.config.region = AWS_REGION;
+        AWS.config.credentials = new AWS.CognitoIdentityCredentials({
+            IdentityPoolId: COGNITO_ID_POOL_ID
+        });
+
+        // 2. Cognitoから一時的な認証情報を取得
+        AWS.config.credentials.get(async (err) => {
+            if (err) {
+                statusEl.innerText = "Cognito認証エラー";
+                console.error("Cognito Error:", err);
+                return;
+            }
+
+            // 3. 取得した認証情報を使ってAWS IoTに接続
+            try {
+                const creds = AWS.config.credentials;
+                const client = new awsiot.mqtt.MqttClient(
+                    new awsiot.io.AwsIotCoreMqttClientConfig(
+                        awsiot.credentials.from_aws_credentials(
+                            creds.accessKeyId,
+                            creds.secretAccessKey,
+                            creds.sessionToken
+                        ),
+                        awsiot.io.SocketOptions.create_tcp_keep_alive_options(true, 3000, 6000),
+                        `wss://${IOT_ENDPOINT}:443/mqtt` // WSS (WebSocket) 接続
+                    )
+                );
+                
+                // 接続試行
+                await client.connect(10000, "WebGyroClient_" + Date.now());
+
+                statusEl.innerText = "接続成功！ ジャイロ待機中";
+                
+                // 4. ジャイロセンサーのイベントリスナーを設定
+                setupGyroListener(client);
+
+            } catch (connectError) {
+                statusEl.innerText = "AWS IoT 接続エラー";
+                console.error("Connection Error:", connectError);
+            }
+        });
+
+        // 5. ジャイロデータを取得し、MQTTで送信する関数
+        function setupGyroListener(mqttClient) {
+            if (window.DeviceOrientationEvent) {
+                window.addEventListener("deviceorientation", (event) => {
+                    // 必要なジャイロデータを抽出
+                    const gyroData = {
+                        alpha: event.alpha, // z軸 (0 to 360)
+                        beta: event.beta,   // x軸 (-180 to 180)
+                        gamma: event.gamma  // y軸 (-90 to 90)
+                    };
+
+                    const payload = JSON.stringify(gyroData);
+                    dataEl.innerText = payload;
+
+                    // データをMQTTトピックに送信
+                    mqttClient.publish(
+                        GYRO_TOPIC,
+                        payload,
+                        awsiot.mqtt.QoS.AtLeastOnce
+                    ).catch((pubError) => {
+                        console.warn("Publish Error:", pubError);
+                    });
+
+                }, true);
+            } else {
+                statusEl.innerText = "このデバイスはジャイロをサポートしていません";
+            }
+        }
+    </script>
+</body>
+</html>
+
