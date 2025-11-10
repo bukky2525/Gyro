@@ -98,15 +98,13 @@
         }
     </style>
     
-    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1149.0.min.js"></script>
-    <script src="https://unpkg.com/aws-iot-device-sdk-v2@1.11.0/dist/browser/aws-iot-device-sdk-v2.min.js"></script>
 </head>
 <body>
     <h1>ジャイロ センサー</h1>
     <p id="status">まず「ジャイロを有効化」ボタンを押してジャイロセンサーの許可を与えてください。</p>
     <button id="enableGyroBtn">ジャイロを有効化</button>
-    <button id="connectBtn" disabled>AWS IoT Coreに接続</button>
-    <p style="font-size: 0.9em; color: #666; margin-top: 10px;">※ ジャイロを無効化すると、AWS IoT Coreとの接続も自動的に切断されます。</p>
+    <button id="connectBtn" disabled>AppSyncに接続</button>
+    <p style="font-size: 0.9em; color: #666; margin-top: 10px;">※ ジャイロを無効化すると、AppSyncとの接続も自動的に切断されます。</p>
     <div id="data">
         <div class="gyro-value">
             <span class="gyro-label">Alpha (Z軸):</span>
@@ -127,14 +125,11 @@
 
     <script>
         // -----------------------------------------------------------------
-        // AWS設定情報
+        // AWS AppSync 設定情報
         // -----------------------------------------------------------------
-        const IOT_ENDPOINT = "a3uber9b61jkrc-ats.iot.ap-northeast-1.amazonaws.com"; // AWS IoTエンドポイント
-        // TODO: 以下のCognito ID プール IDをAWSコンソールから取得して設定してください
-        // AWSコンソール > Cognito > IDプール > GyroWebSiteGuestRole のIDプールIDをコピー
-        const COGNITO_ID_POOL_ID = "ap-northeast-1:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"; // あなたのCognito ID プール ID
-        const AWS_REGION = "ap-northeast-1";
-        const GYRO_TOPIC = "unity/gyro_input"; // Unityで購読しているトピック
+        const APP_SYNC_URL = "https://thyvvhs3wnfajkv5mg5agx2hfm.appsync-api.ap-northeast-1.amazonaws.com/graphql";
+        const API_KEY = "da2-q5wrt2h47nb4zfsld3wffd2xga";
+        const SUBSCRIPTION_CHANNEL_NAME = "gyro";
         // -----------------------------------------------------------------
 
         const statusEl = document.getElementById("status");
@@ -144,7 +139,6 @@
         const connectBtn = document.getElementById("connectBtn");
         const enableGyroBtn = document.getElementById("enableGyroBtn");
         
-        let mqttClient = null;
         let isConnected = false;
         let gyroListener = null;
         let motionListener = null;
@@ -232,7 +226,7 @@
             
             // 接続している場合は切断
             if (isConnected) {
-                disconnectFromAWS();
+                disconnectFromAppSync();
             }
             
             statusEl.innerText = "ジャイロセンサーを無効化しました。";
@@ -268,19 +262,9 @@
                     // 数値で表示
                     updateGyroDisplay(alpha, beta, gamma);
 
-                    // 接続している場合のみMQTTトピックに送信
-                    if (isConnected && mqttClient) {
-                        mqttClient.publish(
-                            GYRO_TOPIC,
-                            JSON.stringify({
-                                alpha: alpha,
-                                beta: beta,
-                                gamma: gamma
-                            }),
-                            awsiot.mqtt.QoS.AtLeastOnce
-                        ).catch((pubError) => {
-                            console.warn("Publish Error:", pubError);
-                        });
+                    // 接続している場合のみAppSyncにデータを送信
+                    if (isConnected) {
+                        publishToAppSync(alpha, beta, gamma);
                     }
                 }
             };
@@ -330,92 +314,85 @@
         }
 
         // 接続ボタンのイベントリスナー
-        connectBtn.addEventListener("click", async () => {
+        connectBtn.addEventListener("click", () => {
             if (isConnected) {
                 // 切断処理
-                await disconnectFromAWS();
+                disconnectFromAppSync();
             } else {
-                // 接続処理
-                await connectToAWS();
+                // 接続処理（AppSyncは接続不要、すぐに使用可能）
+                connectToAppSync();
             }
         });
 
-        // AWS IoT Coreに接続する関数
-        async function connectToAWS() {
-            try {
-                connectBtn.disabled = true;
-                statusEl.innerText = "接続中...";
-                
-                // 1. AWS Cognito 認証情報の設定
-                AWS.config.region = AWS_REGION;
-                AWS.config.credentials = new AWS.CognitoIdentityCredentials({
-                    IdentityPoolId: COGNITO_ID_POOL_ID
-                });
-
-                // 2. Cognitoから一時的な認証情報を取得
-                await new Promise((resolve, reject) => {
-                    AWS.config.credentials.get((err) => {
-                        if (err) {
-                            reject(err);
-                        } else {
-                            resolve();
-                        }
-                    });
-                });
-
-                // 3. 取得した認証情報を使ってAWS IoTに接続
-                const creds = AWS.config.credentials;
-                mqttClient = new awsiot.mqtt.MqttClient(
-                    new awsiot.io.AwsIotCoreMqttClientConfig(
-                        awsiot.credentials.from_aws_credentials(
-                            creds.accessKeyId,
-                            creds.secretAccessKey,
-                            creds.sessionToken
-                        ),
-                        awsiot.io.SocketOptions.create_tcp_keep_alive_options(true, 3000, 6000),
-                        `wss://${IOT_ENDPOINT}:443/mqtt` // WSS (WebSocket) 接続
-                    )
-                );
-                
-                // 接続試行
-                await mqttClient.connect(10000, "WebGyroClient_" + Date.now());
-
-                isConnected = true;
-                statusEl.innerText = "接続成功！ ジャイロデータを送信中...";
-                connectBtn.textContent = "切断";
-                connectBtn.classList.add("connected");
-                connectBtn.disabled = false;
-
-            } catch (error) {
-                statusEl.innerText = `接続エラー: ${error.message}`;
-                console.error("Connection Error:", error);
-                connectBtn.disabled = false;
-                mqttClient = null;
-                isConnected = false;
-            }
+        // AppSyncに接続する関数（実際には接続不要、すぐに使用可能）
+        function connectToAppSync() {
+            isConnected = true;
+            statusEl.innerText = "接続成功！ ジャイロデータを送信中...";
+            connectBtn.textContent = "切断";
+            connectBtn.classList.add("connected");
+            console.log("AppSyncに接続しました（APIキー認証のため接続不要）");
         }
 
-        // AWS IoT Coreから切断する関数
-        async function disconnectFromAWS() {
+        // AppSyncから切断する関数
+        function disconnectFromAppSync() {
+            isConnected = false;
+            statusEl.innerText = "切断しました。接続ボタンを押して再接続できます。";
+            connectBtn.textContent = "AppSyncに接続";
+            connectBtn.classList.remove("connected");
+            console.log("AppSyncから切断しました");
+        }
+
+        // AppSyncにデータを発行する関数
+        async function publishToAppSync(alpha, beta, gamma) {
             try {
-                connectBtn.disabled = true;
-                statusEl.innerText = "切断中...";
-                
-                if (mqttClient) {
-                    await mqttClient.disconnect();
-                    mqttClient = null;
+                // GraphQLミューテーション
+                const mutation = `
+                    mutation Publish($data: AWSJSON!, $name: String!) {
+                        publish(data: $data, name: $name) {
+                            data
+                            name
+                        }
+                    }
+                `;
+
+                // 変数
+                const variables = {
+                    data: JSON.stringify({
+                        alpha: alpha,
+                        beta: beta,
+                        gamma: gamma,
+                        timestamp: new Date().toISOString()
+                    }),
+                    name: SUBSCRIPTION_CHANNEL_NAME
+                };
+
+                // GraphQLリクエスト
+                const response = await fetch(APP_SYNC_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': API_KEY
+                    },
+                    body: JSON.stringify({
+                        query: mutation,
+                        variables: variables
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
                 }
+
+                const result = await response.json();
                 
-                isConnected = false;
-                statusEl.innerText = "切断しました。接続ボタンを押して再接続できます。";
-                connectBtn.textContent = "AWS IoT Coreに接続";
-                connectBtn.classList.remove("connected");
-                connectBtn.disabled = false;
-                
+                if (result.errors) {
+                    console.error("GraphQL Error:", result.errors);
+                } else {
+                    console.log("データを発行しました:", result.data);
+                }
+
             } catch (error) {
-                statusEl.innerText = `切断エラー: ${error.message}`;
-                console.error("Disconnect Error:", error);
-                connectBtn.disabled = false;
+                console.error("AppSync Publish Error:", error);
             }
         }
 
