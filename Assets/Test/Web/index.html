@@ -10,6 +10,122 @@
             padding: 20px;
             max-width: 600px;
             margin: 0 auto;
+            position: relative;
+        }
+        /* ハンバーガーメニュー */
+        .hamburger {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-around;
+        }
+        .hamburger span {
+            display: block;
+            width: 100%;
+            height: 3px;
+            background-color: #333;
+            border-radius: 3px;
+            transition: all 0.3s;
+        }
+        .menu {
+            position: fixed;
+            top: 0;
+            left: -250px;
+            width: 250px;
+            height: 100vh;
+            background-color: #fff;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+            transition: left 0.3s;
+            z-index: 999;
+            padding: 60px 20px 20px;
+            text-align: left;
+        }
+        .menu.open {
+            left: 0;
+        }
+        .menu-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 998;
+        }
+        .menu-overlay.open {
+            display: block;
+        }
+        .menu-item {
+            padding: 15px;
+            margin: 10px 0;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .menu-item:hover {
+            background-color: #e0e0e0;
+        }
+        .menu-item.active {
+            background-color: #4CAF50;
+            color: white;
+        }
+        /* 十字ボタン */
+        .dpad-container {
+            display: none;
+            margin: 20px auto;
+            width: 200px;
+            height: 200px;
+            position: relative;
+        }
+        .dpad-container.active {
+            display: block;
+        }
+        .dpad-button {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 24px;
+            cursor: pointer;
+            user-select: none;
+            touch-action: manipulation;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: all 0.1s;
+        }
+        .dpad-button:active {
+            transform: scale(0.95);
+            background-color: #1976D2;
+        }
+        .dpad-button.up {
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        .dpad-button.down {
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        .dpad-button.left {
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        .dpad-button.right {
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
         }
         #status { 
             font-size: 1.2em; 
@@ -100,27 +216,50 @@
     
 </head>
 <body>
+    <!-- ハンバーガーメニュー -->
+    <div class="hamburger" id="hamburger">
+        <span></span>
+        <span></span>
+        <span></span>
+    </div>
+    <div class="menu-overlay" id="menuOverlay"></div>
+    <div class="menu" id="menu">
+        <div class="menu-item active" data-mode="gyro">ジャイロモード</div>
+        <div class="menu-item" data-mode="dpad">十字ボタンモード</div>
+    </div>
+
     <h1>ジャイロ センサー</h1>
     <p id="status">まず「ジャイロを有効化」ボタンを押してジャイロセンサーの許可を与えてください。</p>
     <button id="enableGyroBtn">ジャイロを有効化</button>
     <button id="connectBtn" disabled>AppSyncに接続</button>
     <p style="font-size: 0.9em; color: #666; margin-top: 10px;">※ ジャイロを無効化すると、AppSyncとの接続も自動的に切断されます。</p>
-    <div id="data">
-        <div class="gyro-value">
-            <span class="gyro-label">Alpha (Z軸):</span>
-            <span class="gyro-number" id="alpha">---</span>
-            <span class="gyro-unit">° (0-360)</span>
+    <!-- ジャイロモード表示 -->
+    <div id="gyroData" class="gyro-mode">
+        <div id="data">
+            <div class="gyro-value">
+                <span class="gyro-label">Alpha (Z軸):</span>
+                <span class="gyro-number" id="alpha">---</span>
+                <span class="gyro-unit">° (0-360)</span>
+            </div>
+            <div class="gyro-value">
+                <span class="gyro-label">Beta (X軸):</span>
+                <span class="gyro-number" id="beta">---</span>
+                <span class="gyro-unit">° (-180 to 180)</span>
+            </div>
+            <div class="gyro-value">
+                <span class="gyro-label">Gamma (Y軸):</span>
+                <span class="gyro-number" id="gamma">---</span>
+                <span class="gyro-unit">° (-90 to 90)</span>
+            </div>
         </div>
-        <div class="gyro-value">
-            <span class="gyro-label">Beta (X軸):</span>
-            <span class="gyro-number" id="beta">---</span>
-            <span class="gyro-unit">° (-180 to 180)</span>
-        </div>
-        <div class="gyro-value">
-            <span class="gyro-label">Gamma (Y軸):</span>
-            <span class="gyro-number" id="gamma">---</span>
-            <span class="gyro-unit">° (-90 to 90)</span>
-        </div>
+    </div>
+    
+    <!-- 十字ボタンモード表示 -->
+    <div class="dpad-container" id="dpadContainer">
+        <button class="dpad-button up" data-direction="up">↑</button>
+        <button class="dpad-button down" data-direction="down">↓</button>
+        <button class="dpad-button left" data-direction="left">←</button>
+        <button class="dpad-button right" data-direction="right">→</button>
     </div>
     <div style="margin-top:16px;">
         <button id="sendDummyBtn" style="padding:8px 16px;">ダミー送信（テスト）</button>
@@ -150,6 +289,13 @@
         const enableGyroBtn = document.getElementById("enableGyroBtn");
         const debugEl = document.getElementById("debugLog");
         const sendDummyBtn = document.getElementById("sendDummyBtn");
+        const hamburger = document.getElementById("hamburger");
+        const menu = document.getElementById("menu");
+        const menuOverlay = document.getElementById("menuOverlay");
+        const menuItems = document.querySelectorAll(".menu-item");
+        const gyroDataEl = document.getElementById("gyroData");
+        const dpadContainer = document.getElementById("dpadContainer");
+        const dpadButtons = document.querySelectorAll(".dpad-button");
         
         let isConnected = false;
         let gyroListener = null;
@@ -158,6 +304,7 @@
         let dataReceived = false;
         let gyroEventCount = 0;
         let lastSendTs = 0;
+        let currentMode = "gyro"; // "gyro" or "dpad"
         const SEND_INTERVAL_MS = 250; // 送信頻度（デバッグでサーバー負荷を抑制）
 
         // デバッグ出力
@@ -461,8 +608,135 @@
             }
         }
 
+        // ハンバーガーメニューのトグル
+        hamburger.addEventListener("click", () => {
+            menu.classList.toggle("open");
+            menuOverlay.classList.toggle("open");
+        });
+
+        // オーバーレイクリックでメニューを閉じる
+        menuOverlay.addEventListener("click", () => {
+            menu.classList.remove("open");
+            menuOverlay.classList.remove("open");
+        });
+
+        // メニューアイテムのクリック処理
+        menuItems.forEach(item => {
+            item.addEventListener("click", () => {
+                const mode = item.getAttribute("data-mode");
+                setMode(mode);
+                menu.classList.remove("open");
+                menuOverlay.classList.remove("open");
+            });
+        });
+
+        // モード切替
+        function setMode(mode) {
+            currentMode = mode;
+            menuItems.forEach(item => {
+                if (item.getAttribute("data-mode") === mode) {
+                    item.classList.add("active");
+                } else {
+                    item.classList.remove("active");
+                }
+            });
+
+            if (mode === "gyro") {
+                gyroDataEl.style.display = "block";
+                dpadContainer.classList.remove("active");
+                enableGyroBtn.style.display = "inline-block";
+                statusEl.innerText = "「ジャイロを有効化」ボタンを押してジャイロセンサーの許可を与えてください。";
+            } else if (mode === "dpad") {
+                gyroDataEl.style.display = "none";
+                dpadContainer.classList.add("active");
+                enableGyroBtn.style.display = "none";
+                connectBtn.disabled = false;
+                statusEl.innerText = "十字ボタンをタップして操作してください。";
+            }
+        }
+
+        // 十字ボタンのイベント処理
+        dpadButtons.forEach(button => {
+            button.addEventListener("click", () => {
+                const direction = button.getAttribute("data-direction");
+                sendDirection(direction);
+            });
+            
+            // タッチデバイス対応
+            button.addEventListener("touchstart", (e) => {
+                e.preventDefault();
+                const direction = button.getAttribute("data-direction");
+                sendDirection(direction);
+            });
+        });
+
+        // 方向データを送信
+        function sendDirection(direction) {
+            if (!isConnected) {
+                connectToAppSync();
+            }
+            dlog(`Sending direction: ${direction}`);
+            publishDirectionToAppSync(direction);
+        }
+
+        // 方向データをAppSyncに送信
+        async function publishDirectionToAppSync(direction) {
+            try {
+                const mutation = `
+                    mutation Publish($data: AWSJSON!, $name: String!) {
+                        publish(data: $data, name: $name) {
+                            data
+                            name
+                        }
+                    }
+                `;
+
+                const variables = {
+                    data: JSON.stringify({
+                        type: "direction",
+                        direction: direction,
+                        timestamp: new Date().toISOString()
+                    }),
+                    name: SUBSCRIPTION_CHANNEL_NAME
+                };
+
+                const response = await fetch(APP_SYNC_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': API_KEY
+                    },
+                    body: JSON.stringify({
+                        query: mutation,
+                        variables: variables
+                    })
+                });
+
+                const text = await response.text();
+                dlog(`Direction Publish HTTP status=${response.status} ${response.statusText}`);
+                dlog(`Direction Publish raw response: ${text}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
+
+                let result = {};
+                try { result = JSON.parse(text); } catch {}
+                
+                if (result.errors) {
+                    console.error("GraphQL Error:", result.errors);
+                    dlog(`GraphQL errors: ${JSON.stringify(result.errors)}`);
+                } else {
+                    console.log("方向データを発行しました:", result.data);
+                    dlog(`Direction published: ${direction}`);
+                }
+
+            } catch (error) {
+                console.error("AppSync Publish Error:", error);
+                dlog(`Publish error: ${error?.message || error}`);
+            }
+        }
+
         // ページ読み込み時にジャイロ表示を開始
         setupGyroDisplay();
+        setMode("gyro"); // デフォルトはジャイロモード
     </script>
 </body>
 </html>
