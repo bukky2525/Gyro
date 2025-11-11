@@ -272,13 +272,21 @@
 
     <script>
         // -----------------------------------------------------------------
-        // AWS AppSync 設定情報（Unityと同じ値に合わせてください）
+        // AWS AppSync Events API 設定情報（Unityと同じ値に合わせてください）
         // -----------------------------------------------------------------
-        const APP_SYNC_API_ID = "k5fxcxsvbbathdhik52l5hegrq";
-        const APP_SYNC_REGION = "ap-northeast-1";
-        const APP_SYNC_URL = `https://${APP_SYNC_API_ID}.appsync-api.${APP_SYNC_REGION}.amazonaws.com/graphql`;
-        const API_KEY = "da2-jhqtdoi3qjdrph6atduxm254wq";
-        const SUBSCRIPTION_CHANNEL_NAME = "gyro";
+        // AppSyncコンソール → 作成したEvents API → 「設定」タブから以下を取得:
+        // 1. DNSエンドポイント - HTTP（例: xxxxxxxxxxxx.appsync-api.ap-northeast-1.amazonaws.com）
+        // 2. DNSエンドポイント - リアルタイム（例: xxxxxxxxxxxx.appsync-realtime-api.ap-northeast-1.amazonaws.com）
+        // 3. APIキー（例: da2-xxxxxxxxxxxxxxxxxxxxx）
+        // 4. リージョン（例: ap-northeast-1）
+        
+        const APP_SYNC_API_ID = "k5fxcxsvbbathdhik52l5hegrq"; // API ID（DNSエンドポイントから取得）
+        const APP_SYNC_REGION = "ap-northeast-1"; // リージョン
+        const APP_SYNC_EVENTS_URL = `https://${APP_SYNC_API_ID}.appsync-api.${APP_SYNC_REGION}.amazonaws.com/event`;
+        const API_KEY = "da2-jhqtdoi3qjdrph6atduxm254wq"; // APIキー
+        const NAMESPACE = "default"; // 名前空間（デフォルトは"default"）
+        const CHANNEL_NAME = "gyro"; // チャンネル名
+        const SUBSCRIPTION_CHANNEL_NAME = `${NAMESPACE}/${CHANNEL_NAME}`; // 完全なチャンネル名（例: "default/gyro"）
         // -----------------------------------------------------------------
 
         const statusEl = document.getElementById("status");
@@ -532,11 +540,14 @@
         // AppSyncに接続する関数（実際には接続不要、すぐに使用可能）
         function connectToAppSync() {
             isConnected = true;
-            statusEl.innerText = "接続成功！ ジャイロデータを送信中...";
+            statusEl.innerText = "接続成功！ データを送信中...";
             connectBtn.textContent = "切断";
             connectBtn.classList.add("connected");
-            console.log("AppSyncに接続しました（APIキー認証のため接続不要）");
-            dlog(`Connect flag set. Endpoint=${APP_SYNC_URL}`);
+            console.log("AppSync Events APIに接続しました（APIキー認証のため接続不要）");
+            const endpoint = `${APP_SYNC_EVENTS_URL}/${SUBSCRIPTION_CHANNEL_NAME}`;
+            dlog(`Connect flag set. Events API Endpoint=${endpoint}`);
+            dlog(`[DEBUG] APP_SYNC_EVENTS_URL=${APP_SYNC_EVENTS_URL}`);
+            dlog(`[DEBUG] SUBSCRIPTION_CHANNEL_NAME=${SUBSCRIPTION_CHANNEL_NAME}`);
         }
 
         // AppSyncから切断する関数
@@ -549,61 +560,44 @@
             dlog("Connect flag cleared.");
         }
 
-        // AppSyncにデータを発行する関数
+        // AppSync Events APIにジャイロデータを発行する関数
         async function publishToAppSync(alpha, beta, gamma) {
             try {
-                // GraphQLミューテーション
-                const mutation = `
-                    mutation Publish($data: AWSJSON!, $name: String!) {
-                        publish(data: $data, name: $name) {
-                            data
-                            name
-                        }
-                    }
-                `;
-
-                // 変数
-                const variables = {
-                    data: JSON.stringify({
-                        alpha: alpha,
-                        beta: beta,
-                        gamma: gamma,
-                        timestamp: new Date().toISOString()
-                    }),
-                    name: SUBSCRIPTION_CHANNEL_NAME
+                // Events APIのHTTPエンドポイントにPOSTリクエストを送信
+                const url = `${APP_SYNC_EVENTS_URL}/${SUBSCRIPTION_CHANNEL_NAME}`;
+                const payload = {
+                    type: "gyro",
+                    alpha: alpha,
+                    beta: beta,
+                    gamma: gamma,
+                    timestamp: new Date().toISOString()
                 };
 
-                // GraphQLリクエスト
-                const response = await fetch(APP_SYNC_URL, {
+                // デバッグ: 送信URLとペイロードをログに出力
+                dlog(`[DEBUG] Sending to URL: ${url}`);
+                dlog(`[DEBUG] Payload: ${JSON.stringify(payload)}`);
+
+                const response = await fetch(url, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'x-api-key': API_KEY
                     },
-                    body: JSON.stringify({
-                        query: mutation,
-                        variables: variables
-                    })
+                    body: JSON.stringify(payload)
                 });
 
                 const text = await response.text();
-                dlog(`Publish HTTP status=${response.status} ${response.statusText}`);
-                dlog(`Publish raw response: ${text}`);
-                if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
-
-                let result = {};
-                try { result = JSON.parse(text); } catch {}
-                
-                if (result.errors) {
-                    console.error("GraphQL Error:", result.errors);
-                    dlog(`GraphQL errors: ${JSON.stringify(result.errors)}`);
-                } else {
-                    console.log("データを発行しました:", result.data);
-                    dlog("Publish OK");
+                dlog(`Gyro Publish HTTP status=${response.status} ${response.statusText}`);
+                if (!response.ok) {
+                    dlog(`Gyro Publish raw response: ${text}`);
+                    throw new Error(`HTTP ${response.status} ${response.statusText}`);
                 }
 
+                console.log("ジャイロデータを発行しました:", payload);
+                dlog(`Gyro data published: alpha=${alpha.toFixed(2)}, beta=${beta.toFixed(2)}, gamma=${gamma.toFixed(2)}`);
+
             } catch (error) {
-                console.error("AppSync Publish Error:", error);
+                console.error("AppSync Events API Publish Error:", error);
                 dlog(`Publish error: ${error?.message || error}`);
             }
         }
@@ -679,57 +673,42 @@
             publishDirectionToAppSync(direction);
         }
 
-        // 方向データをAppSyncに送信
+        // AppSync Events APIに方向データを送信
         async function publishDirectionToAppSync(direction) {
             try {
-                const mutation = `
-                    mutation Publish($data: AWSJSON!, $name: String!) {
-                        publish(data: $data, name: $name) {
-                            data
-                            name
-                        }
-                    }
-                `;
-
-                const variables = {
-                    data: JSON.stringify({
-                        type: "direction",
-                        direction: direction,
-                        timestamp: new Date().toISOString()
-                    }),
-                    name: SUBSCRIPTION_CHANNEL_NAME
+                // Events APIのHTTPエンドポイントにPOSTリクエストを送信
+                const url = `${APP_SYNC_EVENTS_URL}/${SUBSCRIPTION_CHANNEL_NAME}`;
+                const payload = {
+                    type: "direction",
+                    direction: direction,
+                    timestamp: new Date().toISOString()
                 };
 
-                const response = await fetch(APP_SYNC_URL, {
+                // デバッグ: 送信URLとペイロードをログに出力
+                dlog(`[DEBUG] Sending direction to URL: ${url}`);
+                dlog(`[DEBUG] Payload: ${JSON.stringify(payload)}`);
+
+                const response = await fetch(url, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'x-api-key': API_KEY
                     },
-                    body: JSON.stringify({
-                        query: mutation,
-                        variables: variables
-                    })
+                    body: JSON.stringify(payload)
                 });
 
                 const text = await response.text();
                 dlog(`Direction Publish HTTP status=${response.status} ${response.statusText}`);
-                dlog(`Direction Publish raw response: ${text}`);
-                if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
-
-                let result = {};
-                try { result = JSON.parse(text); } catch {}
-                
-                if (result.errors) {
-                    console.error("GraphQL Error:", result.errors);
-                    dlog(`GraphQL errors: ${JSON.stringify(result.errors)}`);
-                } else {
-                    console.log("方向データを発行しました:", result.data);
-                    dlog(`Direction published: ${direction}`);
+                if (!response.ok) {
+                    dlog(`Direction Publish raw response: ${text}`);
+                    throw new Error(`HTTP ${response.status} ${response.statusText}`);
                 }
 
+                console.log("方向データを発行しました:", payload);
+                dlog(`Direction published: ${direction}`);
+
             } catch (error) {
-                console.error("AppSync Publish Error:", error);
+                console.error("AppSync Events API Publish Error:", error);
                 dlog(`Publish error: ${error?.message || error}`);
             }
         }

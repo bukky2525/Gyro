@@ -34,8 +34,8 @@ public class Test : MonoBehaviour
     [SerializeField] private string realtimeDomain;
     [Tooltip("AppSync認可用APIキー")]
     [SerializeField] private string apiKey;
-    [Tooltip("publish・subscribeするチャンネル")]
-    [SerializeField] private string channel = "/default/test";
+    [Tooltip("publish・subscribeするチャンネル（名前空間を含む場合: default/gyro、名前空間を含まない場合: gyro）")]
+    [SerializeField] private string channel = "default/gyro";
 
     [Header("方向データ設定")]
     [SerializeField] private bool logDirectionValues = true;
@@ -180,30 +180,98 @@ public class Test : MonoBehaviour
 
     private void HandleDataMessage(JObject json)
     {
-        if (json["event"] == null) return;
+        Debug.Log($"【方向データ受信】受信メッセージ全体: {json.ToString()}");
         
-        string eventStr = (string)json["event"];
-        try
+        // AppSyncのデータ構造を確認
+        // パターン1: { "type": "data", "id": "...", "data": { "data": { "subscribe": { "data": "...", "name": "..." } } } }
+        // パターン2: { "type": "data", "event": "..." }
+        
+        string rawMessage = json.ToString();
+        
+        // まず、dataフィールドを確認
+        if (json["data"] != null)
         {
-            var eventObj = JObject.Parse(eventStr);
-            Debug.Log($"イベントデータ受信: {eventObj.ToString()}");
-            // 方向データを処理
-            if (eventObj["message"] != null)
+            Debug.Log($"【方向データ受信】dataフィールドが見つかりました");
+            var dataObj = json["data"];
+            
+            // data.data.subscribe.data の構造を確認
+            if (dataObj["data"] != null)
             {
-                string message = (string)eventObj["message"];
-                Debug.Log($"イベントメッセージ: {message}");
-                TryHandleDirectionPayload(message);
+                var innerData = dataObj["data"];
+                if (innerData["subscribe"] != null)
+                {
+                    var subscribe = innerData["subscribe"];
+                    Debug.Log($"【方向データ受信】subscribeフィールドが見つかりました: {subscribe.ToString()}");
+                    
+                    if (subscribe["data"] != null)
+                    {
+                        var payload = subscribe["data"];
+                        Debug.Log($"【方向データ受信】subscribe.dataが見つかりました: {payload.ToString()}");
+                        
+                        // データが文字列の場合はパース
+                        string payloadStr = payload.Type == JTokenType.String 
+                            ? payload.Value<string>() 
+                            : payload.ToString();
+                            
+                        Debug.Log($"【方向データ受信】ペイロード文字列: {payloadStr}");
+                        TryHandleDirectionPayload(payloadStr);
+                        return;
+                    }
+                }
             }
-            if (eventObj["data"] != null)
+            
+            // フォールバック: dataフィールドを直接処理
+            string dataStr = dataObj.ToString();
+            Debug.Log($"【方向データ受信】dataフィールドを直接処理: {dataStr}");
+            TryHandleDirectionPayload(dataStr);
+        }
+        
+        // パターン2: eventフィールドを確認
+        if (json["event"] != null)
+        {
+            Debug.Log($"【方向データ受信】eventフィールドが見つかりました");
+            string eventStr = json["event"].ToString();
+            try
             {
-                string dataPayload = eventObj["data"].ToString();
-                TryHandleDirectionPayload(dataPayload);
+                var eventObj = JObject.Parse(eventStr);
+                Debug.Log($"【方向データ受信】イベントデータ: {eventObj.ToString()}");
+                
+                if (eventObj["message"] != null)
+                {
+                    string message = eventObj["message"].ToString();
+                    Debug.Log($"【方向データ受信】イベントメッセージ: {message}");
+                    TryHandleDirectionPayload(message);
+                }
+                if (eventObj["data"] != null)
+                {
+                    string dataPayload = eventObj["data"].ToString();
+                    Debug.Log($"【方向データ受信】イベントデータ: {dataPayload}");
+                    TryHandleDirectionPayload(dataPayload);
+                }
+            }
+            catch (JsonException ex)
+            {
+                Debug.LogWarning($"【方向データ受信】イベントデータのパースに失敗: {ex.Message}");
+                // パースに失敗した場合は、文字列として処理
+                TryHandleDirectionPayload(eventStr);
             }
         }
-        catch (JsonException)
+        
+        // フォールバック: メッセージ全体から方向データを検索
+        if (rawMessage.Contains("direction") || rawMessage.Contains("\"type\":\"direction\""))
         {
-             Debug.Log($"イベントデータがJSONオブジェクトではありません: {eventStr}");
+            Debug.Log($"【方向データ受信】メッセージ全体から方向データを検索");
+            // JSON文字列から方向データを抽出
+            int directionIndex = rawMessage.IndexOf("\"direction\"");
+            if (directionIndex > 0)
+            {
+                Debug.Log($"【方向データ受信】directionフィールドが見つかりました（位置: {directionIndex}）");
+                // 周辺のJSONを抽出して処理
+                TryHandleDirectionPayload(rawMessage);
+            }
         }
+        
+        Debug.LogWarning($"【方向データ受信】データ構造を認識できませんでした。メッセージ全体: {rawMessage}");
     }
     
     private async void SendConnectionInit()
@@ -350,10 +418,40 @@ public class Test : MonoBehaviour
     private bool TryParseDirectionData(string payload, out DirectionData directionData)
     {
         directionData = default;
+        if (string.IsNullOrWhiteSpace(payload))
+        {
+            return false;
+        }
+        
         try
         {
-            JToken token = JToken.Parse(payload);
+            Debug.Log($"【方向データ解析】ペイロードを解析中: {payload}");
+            
+            JToken token = null;
+            
+            // まず、JSONとしてパースを試みる
+            try
+            {
+                token = JToken.Parse(payload);
+            }
+            catch
+            {
+                // パースに失敗した場合、エスケープされた文字列の可能性がある
+                // エスケープを解除して再試行
+                string unescaped = payload.Replace("\\\"", "\"").Replace("\\\\", "\\");
+                try
+                {
+                    token = JToken.Parse(unescaped);
+                    Debug.Log($"【方向データ解析】エスケープ解除後にパース成功");
+                }
+                catch
+                {
+                    Debug.LogWarning($"【方向データ解析】JSONパースに失敗: {payload}");
+                    return false;
+                }
+            }
 
+            // 文字列の場合は、さらにパース
             if (token.Type == JTokenType.String)
             {
                 string inner = token.Value<string>();
@@ -361,46 +459,82 @@ public class Test : MonoBehaviour
                 {
                     return false;
                 }
-                token = JToken.Parse(inner);
+                try
+                {
+                    token = JToken.Parse(inner);
+                    Debug.Log($"【方向データ解析】ネストされたJSON文字列をパース");
+                }
+                catch
+                {
+                    // エスケープされた文字列の可能性
+                    string unescapedInner = inner.Replace("\\\"", "\"").Replace("\\\\", "\\");
+                    try
+                    {
+                        token = JToken.Parse(unescapedInner);
+                    }
+                    catch
+                    {
+                        Debug.LogWarning($"【方向データ解析】ネストされたJSONのパースに失敗");
+                        return false;
+                    }
+                }
             }
 
             if (token.Type != JTokenType.Object)
             {
+                Debug.LogWarning($"【方向データ解析】トークンがオブジェクトではありません: {token.Type}");
                 return false;
             }
 
             var obj = (JObject)token;
+            Debug.Log($"【方向データ解析】オブジェクトを取得: {obj.ToString()}");
 
             // 方向データの形式を確認
             string type = obj["type"]?.ToString();
-            if (type != "direction")
+            Debug.Log($"【方向データ解析】typeフィールド: {type}");
+            
+            // typeフィールドが"direction"でない場合でも、directionフィールドがあれば処理を続行
+            if (type != "direction" && type != null && !string.IsNullOrEmpty(type))
             {
+                Debug.LogWarning($"【方向データ解析】typeが'direction'ではありません: {type}。directionフィールドを確認します...");
+            }
+            
+            // directionフィールドの存在を確認（必須）
+            if (obj["direction"] == null)
+            {
+                Debug.LogWarning($"【方向データ解析】directionフィールドが見つかりません。type: {type}");
                 return false;
             }
 
             string direction = obj["direction"]?.ToString();
             if (string.IsNullOrEmpty(direction))
             {
+                Debug.LogWarning($"【方向データ解析】directionフィールドの値が空です");
                 return false;
             }
+            
+            Debug.Log($"【方向データ解析】direction値: {direction}");
 
             // 有効な方向かチェック
             if (direction != "up" && direction != "down" && direction != "left" && direction != "right")
             {
+                Debug.LogWarning($"【方向データ解析】無効な方向: {direction}");
                 return false;
             }
 
             string timestamp = obj["timestamp"]?.ToString();
             directionData = new DirectionData(direction, timestamp);
+            Debug.Log($"【方向データ解析】✅ 方向データを正常に解析: {directionData}");
             return true;
         }
-        catch (JsonReaderException)
+        catch (JsonReaderException ex)
         {
+            Debug.LogError($"【方向データ解析】JSON読み取りエラー: {ex.Message}");
             return false;
         }
         catch (Exception e)
         {
-            Debug.LogError($"方向データ解析中に例外が発生しました: {e.Message}");
+            Debug.LogError($"【方向データ解析】例外が発生しました: {e.Message}\n{e.StackTrace}");
             return false;
         }
     }
