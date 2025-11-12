@@ -329,8 +329,8 @@
                     <h3>ジャイロモード</h3>
                     <p>スマホを横持ちで操作します（充電ポートが右側）</p>
                     <ul style="text-align: left; padding-left: 20px; margin-top: 10px;">
-                        <li>Y軸が+ → 後退</li>
-                        <li>Y軸が- → 前進</li>
+                        <li>Y軸が+ → 前進</li>
+                        <li>Y軸が- → 後退</li>
                         <li>X軸が- → 右移動</li>
                         <li>X軸が+ → 左移動</li>
                     </ul>
@@ -571,12 +571,12 @@
                     let moveZ = 0;
                     let moveX = 0;
 
-                    // 前後（Y軸）- 全部逆
-                    // Y軸が+のときは後ろに進む、Y軸が-のとき前に進む
+                    // 前後（Y軸）
+                    // Y軸が+のときは前に進む、Y軸が-のとき後ろに進む
                     if (beta > threshold) {
-                        moveZ = -1; // Y軸が+ → 後退
+                        moveZ = 1; // Y軸が+ → 前進
                     } else if (beta < -threshold) {
-                        moveZ = 1; // Y軸が- → 前進
+                        moveZ = -1; // Y軸が- → 後退
                     } else {
                         moveZ = 0; // 閾値内の場合は0にリセット
                     }
