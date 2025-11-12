@@ -644,8 +644,9 @@
             stickKnob.style.transform = `translate(calc(-50% + ${limitedX}px), calc(-50% + ${limitedY}px))`;
             
             // 移動方向を計算（-1.0 ～ 1.0の範囲に正規化）
+            // 画面座標系では上方向が負の値なので、-limitedYで反転（上=正=前進）
             moveX = limitedDistance > 0 ? (limitedX / stickRadius) : 0;
-            moveZ = limitedDistance > 0 ? (-limitedY / stickRadius) : 0; // Y軸は反転（上=正=前進）
+            moveZ = limitedDistance > 0 ? (-limitedY / stickRadius) : 0;
             
             // 値を送信
             sendMovement(moveX, moveZ);

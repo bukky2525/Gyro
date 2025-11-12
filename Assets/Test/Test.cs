@@ -1,96 +1,163 @@
 using UnityEngine;
+using Firebase;
+using Firebase.Database;
 using System;
 using System.Collections;
 
-// Firebase SDKが必要です
-// Firebase Realtime Database SDK for Unityをプロジェクトに追加してください
-// 詳細はREADME.mdを参照してください
-
-// Firebase SDKを使用する場合のコード（コメントアウト）
-/*
-using Firebase;
-using Firebase.Database;
-using Firebase.Extensions;
-*/
-
-[Serializable]
-public struct GyroData
-{
-    public float alpha; // Z軸回転 (ヨー)
-    public float beta;  // X軸回転 (ピッチ)
-    public float gamma; // Y軸回転 (ロール)
-    public long timestamp;
-}
-
+/// <summary>
+/// PlayerとFirebaseGyroReceiverの機能を統合したハイブリッドスクリプト
+/// Firebaseからの移動方向データを受信し、Playerと同じ物理システムで移動します
+/// Playerオブジェクトにアタッチして使用します
+/// </summary>
 public class Test : MonoBehaviour
 {
-    [Header("Firebase Realtime Database 設定")]
-    [Tooltip("Firebase Realtime Databaseのパス（デフォルト: gyro/data）")]
-    [SerializeField] private string databasePath = "gyro/data";
+    [Header("移動設定")]
+    [SerializeField] private float _moveForce = 4000f;       // 移動力を大幅に上げる（素早い動き）
+    [SerializeField] private float _maxSpeed = 50f;          // 最大速度を大幅に上げる
     
-    [Header("ジャイロデータ設定")]
-    [Tooltip("ジャイロデータのログを表示するか")]
-    [SerializeField] private bool logGyroValues = true;
+    [Header("重力・物理設定")]
+    [SerializeField] private float _gravityMultiplier = 2f;  // 重力の倍率を下げる（軽やかな落下）
+    [SerializeField] private float _mass = 3f;               // 質量を下げる（軽やかな動き）
+    [SerializeField] private float _drag = 0.5f;            // 空気抵抗をさらに下げる
+    [SerializeField] private float _angularDrag = 0.8f;      // 回転抵抗を下げる（軽やかな回転）
     
-    [Tooltip("受信したジャイロデータをUnityの入力として使用するか")]
-    [SerializeField] private bool useGyroAsInput = true;
-
-    [Header("回転対象オブジェクト")]
-    [Tooltip("回転させる対象のGameObject（未設定の場合は自動検索）")]
-    [SerializeField] private GameObject targetObject;
-
-    [Header("回転設定")]
-    [Tooltip("回転の補間速度")]
-    [SerializeField] private float rotationSpeed = 10f;
-
-    // Firebase SDKを使用する場合の変数（コメントアウト）
-    // private DatabaseReference databaseReference;
-    // private FirebaseApp firebaseApp;
-
-    private GyroData _latestGyroData;
-    private bool _hasGyroData = false;
+    [Header("バランス設定")]
+    [SerializeField] private float _balanceForce = 800f;     // バランス力を上げる
+    [SerializeField] private float _stabilizationForce = 150f; // 安定化力を下げる（より自然な動き）
+    
+    [Header("カメラ設定")]
+    [Tooltip("カメラのTransformをセットしてください")]
+    public Transform cameraTransform; // カメラのTransformをセットする
+    
+    [Header("リスポーン設定")]
+    public KeyCode respawnKey = KeyCode.R; // 手動リスポーンキー
+    
+    [Header("カウントダウン設定")]
+    public float countdownDuration = 3f; // カウントダウンの時間（秒）
+    
+    [Header("Firebase設定")]
+    [Tooltip("Firebase Realtime Databaseのパス（デフォルト: control/movement）")]
+    [SerializeField] private string movementPath = "control/movement";
+    
+    [Header("入力設定")]
+    [Tooltip("Firebase入力を優先するか")]
+    [SerializeField] private bool useFirebaseInput = true;
+    
+    [Tooltip("通常入力を許可するか（Firebase入力が優先されない場合のみ）")]
+    [SerializeField] private bool allowNormalInput = true;
+    
+    [Tooltip("プレイヤーが移動可能かどうか（デフォルト: true）")]
+    [SerializeField] private bool startCanMove = true;
+    
+    // 移動方向データ受け取り用の構造体
+    [System.Serializable]
+    public class MovementData
+    {
+        public float moveX; // -1: 左, 0: なし, 1: 右
+        public float moveZ; // -1: 後ろ, 0: なし, 1: 前
+        public long timestamp;
+    }
+    
+    // 現在の移動方向（他のスクリプトからアクセス可能）
+    public static MovementData CurrentMovement { get; private set; } = new MovementData();
+    
+    // プロパティでInspectorとScriptを同期
+    public float moveForce { get => _moveForce; set => _moveForce = value; }
+    public float maxSpeed { get => _maxSpeed; set => _maxSpeed = value; }
+    public float gravityMultiplier { get => _gravityMultiplier; set => _gravityMultiplier = value; }
+    public float mass { get => _mass; set => _mass = value; }
+    public float drag { get => _drag; set => _drag = value; }
+    public float angularDrag { get => _angularDrag; set => _angularDrag = value; }
+    public float balanceForce { get => _balanceForce; set => _balanceForce = value; }
+    public float stabilizationForce { get => _stabilizationForce; set => _stabilizationForce = value; }
+    
+    // Firebase関連
+    private DatabaseReference reference;
     private bool _isFirebaseInitialized = false;
-
-    public event Action<GyroData> OnGyroDataReceived;
+    
+    // 物理関連（Player.csと同じ）
+    private Rigidbody rb;
+    private Vector3 lastVelocity;
+    private RespawnManager respawnManager;
+    private Vector3 moveDirection;
+    private Vector3 customGravity;
+    private bool canMove; // プレイヤーが動けるかどうか
+    
+    // Firebaseからの入力
+    private float firebaseHorizontal = 0f;
+    private float firebaseVertical = 0f;
+    private bool hasFirebaseInput = false;
+    
+    // イベント
+    public event Action<MovementData> OnMovementDataReceived;
     public event Action OnFirebaseInitialized;
     public event Action<string> OnFirebaseError;
-
+    
+    // プロパティ
     public bool IsFirebaseInitialized => _isFirebaseInitialized;
-    public bool HasGyroData => _hasGyroData;
-    public GyroData LatestGyroData => _latestGyroData;
-
+    public bool HasFirebaseInput => hasFirebaseInput;
+    
     void Start()
     {
-        // ターゲットオブジェクトが見つからない場合、自動検索
-        if (targetObject == null)
+        // Rigidbodyを取得
+        rb = GetComponent<Rigidbody>();
+        if (rb == null)
         {
-            targetObject = GameObject.Find("TargetCube");
-            if (targetObject == null)
-            {
-                Debug.LogWarning("ターゲットオブジェクトが見つかりません。シーンに 'TargetCube' という名前のGameObjectを配置してください。");
-            }
+            Debug.LogError("Rigidbodyコンポーネントが見つかりません。このスクリプトはRigidbodyが必要です。");
+            return;
         }
 
+        // 物理特性の設定（鉄球らしく）
+        rb.mass = _mass;
+        rb.linearDamping = _drag;
+        rb.angularDamping = _angularDrag;
+        rb.useGravity = false; // カスタム重力を使用するため無効化
+        
+        // ボールの物理マテリアルを設定（軽やかな鉄球）
+        Collider col = GetComponent<Collider>();
+        if (col != null)
+        {
+            PhysicsMaterial ballMaterial = new PhysicsMaterial("FastIronBallMaterial");
+            ballMaterial.dynamicFriction = 0.4f;      // 摩擦を下げる（滑らかな動き）
+            ballMaterial.staticFriction = 0.4f;       // 静止摩擦を下げる
+            ballMaterial.bounciness = 0.15f;          // 反発を上げる（軽やかな動き）
+            ballMaterial.frictionCombine = PhysicsMaterialCombine.Average;
+            ballMaterial.bounceCombine = PhysicsMaterialCombine.Average;
+            
+            col.material = ballMaterial;
+        }
+        
+        // カスタム重力を設定
+        customGravity = Physics.gravity * _gravityMultiplier;
+        
+        // リスポーンマネージャーを検索
+        respawnManager = FindFirstObjectByType<RespawnManager>();
+        if (respawnManager == null)
+        {
+            Debug.LogWarning("RespawnManagerが見つかりません。リスポーン機能が使用できません。");
+        }
+        
         // Firebase初期化
         InitializeFirebase();
+        
+        // 移動可能状態を設定
+        canMove = startCanMove;
+        
+        Debug.Log($"プレイヤーが初期化されました。移動可能: {canMove}, useFirebaseInput: {useFirebaseInput}, allowNormalInput: {allowNormalInput}");
     }
 
     private void InitializeFirebase()
     {
         Debug.Log("Firebase Realtime Databaseの初期化を開始します...");
-
-        // ⚠️ Firebase SDKが必要です
-        // 以下のコードは、Firebase SDKをプロジェクトに追加した後に有効にしてください
         
-        /*
-        FirebaseApp.CheckAndFixDependenciesAsync().ContinueWithOnMainThread(task =>
+        // Firebaseの依存関係をチェックし、修復
+        FirebaseApp.CheckAndFixDependenciesAsync().ContinueWith(task =>
         {
             var dependencyStatus = task.Result;
             if (dependencyStatus == DependencyStatus.Available)
             {
-                firebaseApp = FirebaseApp.DefaultInstance;
-                databaseReference = FirebaseDatabase.DefaultInstance.RootReference;
-                
+                // データベース参照を取得
+                reference = FirebaseDatabase.DefaultInstance.RootReference;
                 _isFirebaseInitialized = true;
                 Debug.Log("Firebase Realtime Databaseの初期化が完了しました。");
                 OnFirebaseInitialized?.Invoke();
@@ -104,176 +171,264 @@ public class Test : MonoBehaviour
                 OnFirebaseError?.Invoke(errorMessage);
             }
         });
-        */
-
-        // デモ用: Firebase SDKが導入されるまでのモックデータ
-        Debug.LogWarning("⚠️ Firebase SDKが導入されていません。");
-        Debug.LogWarning("⚠️ Firebase Realtime Database SDK for Unityをプロジェクトに追加してください。");
-        Debug.LogWarning("⚠️ 詳細はREADME.mdを参照してください。");
-        
-        // モックデータで動作確認（実際のFirebase SDK導入後は削除）
-        StartCoroutine(MockGyroData());
     }
 
     private void StartListeningForData()
     {
-        Debug.Log($"Firebase Realtime Databaseの監視を開始しました。パス: {databasePath}");
+        Debug.Log($"Firebase Realtime Databaseの監視を開始しました。パス: {movementPath}");
 
-        // ⚠️ Firebase SDKが必要です
-        // 以下のコードは、Firebase SDKをプロジェクトに追加した後に有効にしてください
-        
-        /*
-        DatabaseReference gyroRef = databaseReference.Child(databasePath);
-        
-        gyroRef.ValueChanged += HandleValueChanged;
-        */
+        // 指定パスの値が変更されるたびに呼ばれるイベントリスナーを設定
+        reference.Child(movementPath).ValueChanged += HandleValueChanged;
     }
 
-    // Firebase SDKを使用する場合のハンドラー（コメントアウト）
-    /*
+    // ★ データベースの値が更新されるたびに呼ばれる
     private void HandleValueChanged(object sender, ValueChangedEventArgs args)
     {
         if (args.DatabaseError != null)
         {
-            string errorMessage = $"データベースエラー: {args.DatabaseError.Message}";
-            Debug.LogError(errorMessage);
-            OnFirebaseError?.Invoke(errorMessage);
+            Debug.LogError($"データベースエラー: {args.DatabaseError.Message}");
+            OnFirebaseError?.Invoke(args.DatabaseError.Message);
             return;
         }
 
+        // 受信したデータを解析
         DataSnapshot snapshot = args.Snapshot;
         if (snapshot.Exists)
         {
             string json = snapshot.GetRawJsonValue();
-            Debug.Log($"Firebaseからデータを受信: {json}");
+            
+            // UnityのJsonUtilityを使用してJSONをデシリアライズ
+            MovementData data = JsonUtility.FromJson<MovementData>(json);
 
-            try
-            {
-                // JSONをパース
-                GyroData data = JsonUtility.FromJson<GyroData>(json);
+            // メインスレッドでの操作をキューに入れる
+            MainThreadDispatcher.Instance().Enqueue(() => {
+                // 移動方向データを更新
+                CurrentMovement = data;
+                hasFirebaseInput = true;
                 
-                _latestGyroData = data;
-                _hasGyroData = true;
-
-                if (logGyroValues)
-                {
-                    Debug.Log($"ジャイロデータ受信 => Alpha: {data.alpha}, Beta: {data.beta}, Gamma: {data.gamma}");
-                }
-
-                // メインスレッドで処理
-                UnityMainThreadDispatcher.Instance.Enqueue(() => {
-                    ProcessGyroData(data);
-                    OnGyroDataReceived?.Invoke(data);
-                });
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"JSONのパースに失敗: {e.Message}");
-            }
+                // Firebaseからの入力を設定
+                firebaseHorizontal = data.moveX;
+                firebaseVertical = data.moveZ;
+                
+                OnMovementDataReceived?.Invoke(data);
+                
+                // デバッグログは最初の数回だけ表示（ログが多すぎるのを防ぐ）
+                // Debug.Log($"移動方向受信: moveX={data.moveX}, moveZ={data.moveZ}");
+            });
         }
     }
-    */
 
-    private void ProcessGyroData(GyroData gyroData)
+    // Update is called once per frame
+    void Update()
     {
-        if (!useGyroAsInput)
+        HandleRespawn();
+        
+        // 移動入力を処理
+        if (canMove)
         {
+            HandleInput();
+        }
+        else
+        {
+            // canMoveがfalseの場合、moveDirectionをリセット
+            moveDirection = Vector3.zero;
+        }
+    }
+    
+    // 物理演算のタイミングで呼ばれる（Rigidbodyの操作に適している）
+    void FixedUpdate()
+    {
+        // カスタム重力を適用（鉄球の重い落下）
+        rb.AddForce(customGravity, ForceMode.Acceleration);
+        
+        // カウントダウン中は移動しない
+        if (!canMove)
+        {
+            // プレイヤーを静止状態に保つ
+            rb.linearVelocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
             return;
         }
 
-        // ジャイロデータを使用してUnityの入力として処理
-        if (targetObject != null)
+        // 現在の速度を取得
+        Vector3 currentVelocity = rb.linearVelocity;
+        Vector3 horizontalVelocity = new Vector3(currentVelocity.x, 0, currentVelocity.z);
+        
+        // 移動方向が設定されている場合のみ力を加える
+        if (moveDirection.magnitude > 0.01f)
         {
-            // ジャイロの値をそのまま回転角度として利用
-            // Quaternion.Euler(X軸, Y軸, Z軸)
-            Quaternion targetRotation = Quaternion.Euler(gyroData.beta, gyroData.alpha, gyroData.gamma);
-            
-            // 滑らかにするためLerpで補間
-            targetObject.transform.rotation = Quaternion.Lerp(
-                targetObject.transform.rotation,
-                targetRotation,
-                Time.deltaTime * rotationSpeed
-            );
+            // 水平方向の最大速度制限
+            if (horizontalVelocity.magnitude < _maxSpeed)
+            {
+                // Rigidbodyに力を加えてPlayerを移動させる
+                rb.AddForce(moveDirection.normalized * _moveForce * Time.fixedDeltaTime, ForceMode.Force);
+            }
         }
+        
+        StabilizeMovement();
     }
-
-    void Update()
+    
+    void HandleInput()
     {
-        // ジャイロデータを使用してUnityの入力として処理
-        if (useGyroAsInput && _hasGyroData)
+        float horizontal = 0f;
+        float vertical = 0f;
+        
+        // Firebase入力を優先
+        if (useFirebaseInput && hasFirebaseInput)
         {
-            ProcessGyroData(_latestGyroData);
+            horizontal = firebaseHorizontal;
+            vertical = firebaseVertical; // moveZ=1で前、moveZ=-1で後ろ（Web側で正しい方向に設定済み）
+        }
+        // 通常入力（WASDキーまたは左スティック）
+        else if (allowNormalInput)
+        {
+            horizontal = Input.GetAxis("Horizontal"); // A, Dキー / ←, →キー / 左スティック左右
+            vertical = Input.GetAxis("Vertical");     // W, Sキー / ↑, ↓キー / 左スティック上下
+        }
+        
+        // カメラの向きを基準にした移動方向を計算
+        CalculateMoveDirection(horizontal, vertical);
+        
+        // デバッグ: 入力値と移動方向を確認（最初の数回だけ）
+        if (Mathf.Abs(horizontal) > 0.1f || Mathf.Abs(vertical) > 0.1f)
+        {
+            // Debug.Log($"入力: horizontal={horizontal}, vertical={vertical}, moveDirection={moveDirection}");
+        }
+        
+        // 微細なバランス調整
+        if (Mathf.Abs(horizontal) < 0.1f && Mathf.Abs(vertical) < 0.1f)
+        {
+            ApplyBalanceCorrection();
         }
     }
+    
+    void CalculateMoveDirection(float horizontal, float vertical)
+    {
+        // カメラの向きを基準にした移動方向を計算
+        if (cameraTransform != null)
+        {
+            // カメラの前方向ベクトルを取得
+            Vector3 camForward = cameraTransform.forward;
+            // カメラの右方向ベクトルを取得
+            Vector3 camRight = cameraTransform.right;
 
+            // カメラが上下を向いていても水平に移動するように、Y成分を0にして正規化する
+            camForward.y = 0;
+            camRight.y = 0;
+            camForward.Normalize();
+            camRight.Normalize();
+
+            // 入力とカメラの向きから、最終的な移動方向を決定
+            moveDirection = camForward * vertical + camRight * horizontal;
+        }
+        else
+        {
+            // カメラが設定されていない場合は、ワールド座標系で移動
+            moveDirection = new Vector3(horizontal, 0, vertical);
+        }
+    }
+    
+    void StabilizeMovement()
+    {
+        // 水平方向の速度制限（垂直方向は重力に任せる）
+        Vector3 currentVelocity = rb.linearVelocity;
+        Vector3 horizontalVelocity = new Vector3(currentVelocity.x, 0, currentVelocity.z);
+        
+        if (horizontalVelocity.magnitude > _maxSpeed)
+        {
+            Vector3 limitedVelocity = horizontalVelocity.normalized * _maxSpeed;
+            rb.linearVelocity = new Vector3(limitedVelocity.x, currentVelocity.y, limitedVelocity.z);
+        }
+        
+        // 回転の安定化（軽やかな回転）
+        if (rb.angularVelocity.magnitude > 15f)
+        {
+            rb.angularVelocity = rb.angularVelocity.normalized * 15f;
+        }
+    }
+    
+    void ApplyBalanceCorrection()
+    {
+        // 静止時の微細な調整
+        Vector3 currentVelocity = rb.linearVelocity;
+        currentVelocity.y = 0;
+        
+        if (currentVelocity.magnitude > 0.1f)
+        {
+            Vector3 correction = -currentVelocity * _stabilizationForce * Time.deltaTime;
+            rb.AddForce(correction, ForceMode.Force);
+        }
+    }
+    
+    void HandleRespawn()
+    {
+        // 手動リスポーン（Rキー）
+        if (Input.GetKeyDown(respawnKey) && respawnManager != null)
+        {
+            respawnManager.ManualRespawn();
+        }
+    }
+    
+    // 外部から移動可能状態を設定するメソッド
+    public void SetCanMove(bool canMoveState)
+    {
+        canMove = canMoveState;
+        Debug.Log($"プレイヤーの移動状態: {(canMove ? "可能" : "不可能")}");
+    }
+    
+    // 外部から移動可能状態を取得するメソッド
+    public bool GetCanMove()
+    {
+        return canMove;
+    }
+    
+    // Firebase入力を有効/無効にする
+    public void SetUseFirebaseInput(bool use)
+    {
+        useFirebaseInput = use;
+    }
+    
+    // 通常入力を有効/無効にする
+    public void SetAllowNormalInput(bool allow)
+    {
+        allowNormalInput = allow;
+    }
+    
+    void OnDisable()
+    {
+        // Play停止時やオブジェクトが無効化されたときにイベントリスナーを解除
+        UnsubscribeFromFirebase();
+    }
+    
+    void OnApplicationPause(bool pauseStatus)
+    {
+        // アプリがバックグラウンドに移ったときも解除
+        if (pauseStatus)
+        {
+            UnsubscribeFromFirebase();
+        }
+    }
+    
     void OnDestroy()
     {
-        // Firebase SDKを使用する場合のクリーンアップ（コメントアウト）
-        /*
-        if (databaseReference != null)
-        {
-            DatabaseReference gyroRef = databaseReference.Child(databasePath);
-            gyroRef.ValueChanged -= HandleValueChanged;
-        }
-        */
+        // アプリ終了時にイベントリスナーを解除
+        UnsubscribeFromFirebase();
     }
-
-    // デモ用: Firebase SDKが導入されるまでのモックデータ（実際のFirebase SDK導入後は削除）
-    private IEnumerator MockGyroData()
+    
+    private void UnsubscribeFromFirebase()
     {
-        while (true)
+        if (reference != null)
         {
-            yield return new WaitForSeconds(0.1f);
-            
-            // モックデータを生成
-            _latestGyroData = new GyroData
+            try
             {
-                alpha = Mathf.Sin(Time.time) * 180f,
-                beta = Mathf.Cos(Time.time) * 90f,
-                gamma = Mathf.Sin(Time.time * 0.5f) * 45f,
-                timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-            };
-            
-            _hasGyroData = true;
-
-            if (logGyroValues)
-            {
-                Debug.Log($"モックジャイロデータ => Alpha: {_latestGyroData.alpha:F2}, Beta: {_latestGyroData.beta:F2}, Gamma: {_latestGyroData.gamma:F2}");
+                reference.Child(movementPath).ValueChanged -= HandleValueChanged;
+                Debug.Log("Firebase Realtime Databaseの監視を停止しました。");
             }
-
-            OnGyroDataReceived?.Invoke(_latestGyroData);
-        }
-    }
-
-    // デバッグ用: サーバーの状態を表示
-    void OnGUI()
-    {
-        GUIStyle style = new GUIStyle();
-        style.fontSize = 20;
-        style.normal.textColor = Color.white;
-        style.wordWrap = true;
-
-        int yPos = 10;
-        GUI.Label(new Rect(10, yPos, 800, 30), $"Firebase接続: {(_isFirebaseInitialized ? "接続済み ✅" : "未接続 ❌")}", style);
-        yPos += 35;
-        
-        GUI.Label(new Rect(10, yPos, 800, 30), $"データベースパス: {databasePath}", style);
-        yPos += 35;
-        
-        if (!_isFirebaseInitialized)
-        {
-            GUI.Label(new Rect(10, yPos, 800, 60), $"⚠️ Firebase SDKが必要です。README.mdを参照してください。", style);
-            yPos += 65;
-        }
-        
-        if (_hasGyroData)
-        {
-            GUI.Label(new Rect(10, yPos, 800, 30), $"Alpha: {_latestGyroData.alpha:F2}", style);
-            yPos += 35;
-            GUI.Label(new Rect(10, yPos, 800, 30), $"Beta: {_latestGyroData.beta:F2}", style);
-            yPos += 35;
-            GUI.Label(new Rect(10, yPos, 800, 30), $"Gamma: {_latestGyroData.gamma:F2}", style);
+            catch (System.Exception e)
+            {
+                // 既に解除されている場合はエラーを無視
+                Debug.LogWarning($"Firebaseリスナーの解除中にエラーが発生しました（無視可能）: {e.Message}");
+            }
         }
     }
 }
-
