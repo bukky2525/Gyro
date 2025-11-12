@@ -571,11 +571,13 @@
                     let moveZ = 0;
                     let moveX = 0;
 
-                    // 前後
+                    // 前後（上下を修正：符号を反転）
+                    // Unity側では vertical = firebaseVertical なので、moveZ=1で前進、moveZ=-1で後退
+                    // ただし、実際の動作が逆だったため符号を反転
                     if (beta > threshold) {
-                        moveZ = 1; // 前
+                        moveZ = -1; // 前に倒す → 前進（符号反転で修正）
                     } else if (beta < -threshold) {
-                        moveZ = -1; // 後ろ
+                        moveZ = 1; // 後ろに傾ける → 後退（符号反転で修正）
                     } else {
                         moveZ = 0; // 閾値内の場合は0にリセット
                     }
