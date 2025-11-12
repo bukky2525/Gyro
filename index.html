@@ -4,258 +4,169 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ジャイロ センサー送信</title>
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    
     <style>
-        body { 
-            font-family: sans-serif; 
-            text-align: center; 
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
             padding: 20px;
-            max-width: 600px;
-            margin: 0 auto;
-            position: relative;
-        }
-        /* ハンバーガーメニュー */
-        .hamburger {
-            position: fixed;
-            top: 10px;
-            left: 10px;
-            width: 30px;
-            height: 30px;
-            cursor: pointer;
-            z-index: 1000;
             display: flex;
-            flex-direction: column;
-            justify-content: space-around;
+            justify-content: center;
+            align-items: center;
         }
-        .hamburger span {
-            display: block;
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            max-width: 600px;
             width: 100%;
-            height: 3px;
-            background-color: #333;
-            border-radius: 3px;
-            transition: all 0.3s;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
         }
-        .menu {
-            position: fixed;
-            top: 0;
-            left: -250px;
-            width: 250px;
-            height: 100vh;
-            background-color: #fff;
-            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
-            transition: left 0.3s;
-            z-index: 999;
-            padding: 60px 20px 20px;
-            text-align: left;
-        }
-        .menu.open {
-            left: 0;
-        }
-        .menu-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background-color: rgba(0, 0, 0, 0.5);
-            z-index: 998;
-        }
-        .menu-overlay.open {
-            display: block;
-        }
-        .menu-item {
-            padding: 15px;
-            margin: 10px 0;
-            background-color: #f0f0f0;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        .menu-item:hover {
-            background-color: #e0e0e0;
-        }
-        .menu-item.active {
-            background-color: #4CAF50;
-            color: white;
-        }
-        /* 十字ボタン */
-        .dpad-container {
-            display: none;
-            margin: 20px auto;
-            width: 200px;
-            height: 200px;
-            position: relative;
-        }
-        .dpad-container.active {
-            display: block;
-        }
-        .dpad-button {
-            position: absolute;
-            width: 60px;
-            height: 60px;
-            background-color: #2196F3;
-            color: white;
-            border: none;
-            border-radius: 8px;
+
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+            text-align: center;
             font-size: 24px;
-            cursor: pointer;
-            user-select: none;
-            touch-action: manipulation;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-            transition: all 0.1s;
         }
-        .dpad-button:active {
-            transform: scale(0.95);
-            background-color: #1976D2;
-        }
-        .dpad-button.up {
-            top: 0;
-            left: 50%;
-            transform: translateX(-50%);
-        }
-        .dpad-button.down {
-            bottom: 0;
-            left: 50%;
-            transform: translateX(-50%);
-        }
-        .dpad-button.left {
-            left: 0;
-            top: 50%;
-            transform: translateY(-50%);
-        }
-        .dpad-button.right {
-            right: 0;
-            top: 50%;
-            transform: translateY(-50%);
-        }
-        #status { 
-            font-size: 1.2em; 
-            margin: 20px 0;
-            padding: 10px;
-            background-color: #f0f0f0;
-            border-radius: 5px;
-        }
-        #connectBtn {
+
+        .status {
             font-size: 1.2em;
-            padding: 15px 30px;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
             margin: 20px 0;
+            padding: 15px;
+            background-color: #f0f0f0;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: 600;
         }
-        #connectBtn:hover {
-            background-color: #45a049;
+
+        .status.connected {
+            background-color: #d4edda;
+            color: #155724;
         }
-        #connectBtn:disabled {
-            background-color: #cccccc;
-            cursor: not-allowed;
+
+        .status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
         }
-        #connectBtn.connected {
-            background-color: #f44336;
+
+        .status.connecting {
+            background-color: #fff3cd;
+            color: #856404;
         }
-        #connectBtn.connected:hover {
-            background-color: #da190b;
-        }
-        #enableGyroBtn {
+
+        button {
             font-size: 1.1em;
             padding: 12px 25px;
             background-color: #2196F3;
             color: white;
             border: none;
-            border-radius: 5px;
+            border-radius: 8px;
             cursor: pointer;
             margin: 10px 5px;
+            transition: background-color 0.3s;
+            width: 100%;
+            max-width: 300px;
         }
-        #enableGyroBtn:hover {
+
+        button:hover {
             background-color: #1976D2;
         }
-        #enableGyroBtn:disabled {
+
+        button:disabled {
             background-color: #cccccc;
             cursor: not-allowed;
         }
+
         #enableGyroBtn.enabled {
             background-color: #ff9800;
         }
+
         #enableGyroBtn.enabled:hover {
             background-color: #f57c00;
         }
+
         #data {
             background-color: #f9f9f9;
             padding: 20px;
-            border-radius: 5px;
+            border-radius: 8px;
             border: 1px solid #ddd;
             min-height: 150px;
             text-align: left;
             font-size: 1.1em;
             line-height: 1.8;
+            margin-top: 20px;
         }
+
         .gyro-value {
             margin: 10px 0;
-            padding: 8px;
+            padding: 12px;
             background-color: white;
             border-left: 4px solid #4CAF50;
-            border-radius: 3px;
+            border-radius: 4px;
         }
+
         .gyro-label {
             font-weight: bold;
             color: #333;
             display: inline-block;
-            min-width: 80px;
+            min-width: 100px;
         }
+
         .gyro-number {
             color: #2196F3;
             font-size: 1.2em;
             font-weight: bold;
         }
+
         .gyro-unit {
             color: #666;
             font-size: 0.9em;
         }
-        .websocket-url-input {
-            width: 100%;
-            max-width: 400px;
-            padding: 10px;
-            margin: 10px auto;
-            border: 2px solid #ddd;
-            border-radius: 5px;
-            font-size: 1em;
+
+        .instructions {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            line-height: 1.6;
         }
-        .websocket-url-input:focus {
-            outline: none;
-            border-color: #4CAF50;
+
+        .instructions h3 {
+            margin-bottom: 10px;
+            color: #1976d2;
         }
     </style>
 </head>
 <body>
-    <!-- ハンバーガーメニュー -->
-    <div class="hamburger" id="hamburger">
-        <span></span>
-        <span></span>
-        <span></span>
-    </div>
-    <div class="menu-overlay" id="menuOverlay"></div>
-    <div class="menu" id="menu">
-        <div class="menu-item active" data-mode="gyro">ジャイロモード</div>
-        <div class="menu-item" data-mode="dpad">十字ボタンモード</div>
-    </div>
+    <div class="container">
+        <h1>📱 ジャイロ センサー送信</h1>
+        
+        <div class="instructions">
+            <h3>使い方</h3>
+            <ol style="text-align: left; padding-left: 20px;">
+                <li>「ジャイロを有効化」ボタンを押してジャイロセンサーの許可を与えてください</li>
+                <li>自動的にジャイロデータがFirebase Realtime Databaseに送信されます</li>
+                <li>Unity側でデータを受信してゲーム操作に反映されます</li>
+            </ol>
+        </div>
 
-    <h1>ジャイロ センサー</h1>
-    <p id="status">まず「ジャイロを有効化」ボタンを押してジャイロセンサーの許可を与えてください。</p>
-    
-    <!-- WebSocket URL設定 -->
-    <div style="margin: 20px 0;">
-        <label for="websocketUrl" style="display: block; margin-bottom: 5px; font-weight: bold;">WebSocket URL:</label>
-        <input type="text" id="websocketUrl" class="websocket-url-input" placeholder="ws://localhost:8080 または wss://example.com" value="ws://localhost:8080">
-    </div>
-    
-    <button id="enableGyroBtn">ジャイロを有効化</button>
-    <button id="connectBtn" disabled>WebSocketに接続</button>
-    <p style="font-size: 0.9em; color: #666; margin-top: 10px;">※ ジャイロを無効化すると、WebSocketとの接続も自動的に切断されます。</p>
-    
-    <!-- ジャイロモード表示 -->
-    <div id="gyroData" class="gyro-mode">
+        <p id="status" class="status disconnected">まず「ジャイロを有効化」ボタンを押してジャイロセンサーの許可を与えてください。</p>
+        <button id="enableGyroBtn">ジャイロを有効化</button>
+        
         <div id="data">
             <div class="gyro-value">
                 <span class="gyro-label">Alpha (Z軸):</span>
@@ -274,68 +185,40 @@
             </div>
         </div>
     </div>
-    
-    <!-- 十字ボタンモード表示 -->
-    <div class="dpad-container" id="dpadContainer">
-        <button class="dpad-button up" data-direction="up">↑</button>
-        <button class="dpad-button down" data-direction="down">↓</button>
-        <button class="dpad-button left" data-direction="left">←</button>
-        <button class="dpad-button right" data-direction="right">→</button>
-    </div>
-    <div style="margin-top:16px;">
-        <button id="sendDummyBtn" style="padding:8px 16px;">ダミー送信（テスト）</button>
-    </div>
-    <div style="margin-top:16px; text-align:left;">
-        <div style="font-weight:bold;">デバッグログ</div>
-        <pre id="debugLog" style="background:#111;color:#0f0;padding:12px;border-radius:6px;max-height:220px;overflow:auto;white-space:pre-wrap;"></pre>
-        <div style="font-size:12px;color:#666;margin-top:4px;">最新100件まで保持</div>
-    </div>
 
     <script>
-        // -----------------------------------------------------------------
-        // WebSocket設定
-        // -----------------------------------------------------------------
+        // Firebase設定（提供された情報を使用）
+        const firebaseConfig = {
+            apiKey: "AIzaSyDDbQ1fClyVJgXeYlRPr9KVmpN8Z0L-ceY",
+            authDomain: "gyro-67262.firebaseapp.com",
+            databaseURL: "https://gyro-67262-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "gyro-67262",
+            storageBucket: "gyro-67262.firebasestorage.app",
+            messagingSenderId: "334654487209",
+            appId: "1:334654487209:web:6bdbb65a93f107db1bc7b8",
+            measurementId: "G-CXFVW3T368"
+        };
+
+        // Firebase初期化
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        
+        // Unityと共有するデータベースパスへの参照を取得
+        const gyroRef = database.ref('gyro/data');
+        // 🚨 データベースには { "gyro": { "data": {...} } } という構造で保存されます
+
         const statusEl = document.getElementById("status");
         const alphaEl = document.getElementById("alpha");
         const betaEl = document.getElementById("beta");
         const gammaEl = document.getElementById("gamma");
-        const connectBtn = document.getElementById("connectBtn");
         const enableGyroBtn = document.getElementById("enableGyroBtn");
-        const debugEl = document.getElementById("debugLog");
-        const sendDummyBtn = document.getElementById("sendDummyBtn");
-        const hamburger = document.getElementById("hamburger");
-        const menu = document.getElementById("menu");
-        const menuOverlay = document.getElementById("menuOverlay");
-        const menuItems = document.querySelectorAll(".menu-item");
-        const gyroDataEl = document.getElementById("gyroData");
-        const dpadContainer = document.getElementById("dpadContainer");
-        const dpadButtons = document.querySelectorAll(".dpad-button");
-        const websocketUrlInput = document.getElementById("websocketUrl");
-        
-        let ws = null;
-        let isConnected = false;
+
         let gyroListener = null;
         let motionListener = null;
         let gyroEnabled = false;
         let dataReceived = false;
-        let gyroEventCount = 0;
-        let lastSendTs = 0;
-        let currentMode = "gyro"; // "gyro" or "dpad"
-        const SEND_INTERVAL_MS = 250; // 送信頻度（デバッグでサーバー負荷を抑制）
-
-        // デバッグ出力
-        const _logs = [];
-        function dlog(msg) {
-            const ts = new Date().toISOString();
-            const line = `[${ts}] ${msg}`;
-            console.log(line);
-            _logs.push(line);
-            if (_logs.length > 100) _logs.shift();
-            if (debugEl) {
-                debugEl.textContent = _logs.join("\n");
-                debugEl.scrollTop = debugEl.scrollHeight;
-            }
-        }
+        let lastSendTime = 0;
+        const SEND_INTERVAL = 33; // 30 FPS相当 (33ms) - 低遅延のため
 
         // ジャイロデータを数値で表示する関数
         function updateGyroDisplay(alpha, beta, gamma) {
@@ -360,34 +243,33 @@
             }
 
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                // iOS 13+ の場合、明示的な許可が必要
                 DeviceOrientationEvent.requestPermission()
                     .then(response => {
-                        dlog(`DeviceOrientation permission response: ${response}`);
                         if (response == 'granted') {
                             startGyroListeners();
-                            statusEl.innerText = "ジャイロセンサーが有効になりました！データを取得しています。";
+                            statusEl.innerText = "ジャイロセンサーが有効になりました！データをFirebaseに送信中...";
+                            statusEl.className = "status connected";
                             updateGyroButtonState(true);
-                            connectBtn.disabled = false;
                         } else {
                             statusEl.innerText = "ジャイロセンサーの許可が拒否されました。ブラウザの設定から許可してください。";
+                            statusEl.className = "status disconnected";
                             console.error("ジャイロセンサーの許可が拒否されました");
-                            dlog("Permission denied for DeviceOrientation");
                         }
                     })
                     .catch(error => {
                         statusEl.innerText = `ジャイロセンサーの許可エラー: ${error.message}`;
+                        statusEl.className = "status disconnected";
                         console.error("ジャイロセンサーの許可エラー:", error);
-                        dlog(`Permission request error: ${error?.message || error}`);
                         startGyroListeners();
                         updateGyroButtonState(true);
-                        connectBtn.disabled = false;
                     });
             } else {
+                // 通常のブラウザ（許可APIなし）
                 startGyroListeners();
-                statusEl.innerText = "ジャイロセンサーを有効化しました。データを取得しています。";
+                statusEl.innerText = "ジャイロセンサーを有効化しました。データをFirebaseに送信中...";
+                statusEl.className = "status connected";
                 updateGyroButtonState(true);
-                connectBtn.disabled = false;
-                dlog("DeviceOrientation permission API not required; listeners started.");
             }
         }
 
@@ -401,7 +283,7 @@
                 window.removeEventListener("deviceorientation", gyroListener, true);
                 gyroListener = null;
             }
-            
+
             if (motionListener) {
                 window.removeEventListener("devicemotion", motionListener, true);
                 motionListener = null;
@@ -409,18 +291,12 @@
 
             gyroEnabled = false;
             dataReceived = false;
-            gyroEventCount = 0;
-            
+
             updateGyroDisplay(null, null, null);
-            
-            if (isConnected) {
-                disconnectFromWebSocket();
-            }
-            
+
             statusEl.innerText = "ジャイロセンサーを無効化しました。";
+            statusEl.className = "status disconnected";
             updateGyroButtonState(false);
-            connectBtn.disabled = true;
-            dlog("Gyro disabled and connection closed (if any).");
         }
 
         // ジャイロボタンの状態を更新
@@ -445,20 +321,33 @@
 
                 if (alpha !== null && beta !== null && gamma !== null) {
                     dataReceived = true;
-                    gyroEventCount++;
-                    
-                    updateGyroDisplay(alpha, beta, gamma);
-                    if (gyroEventCount % 10 === 1) {
-                        dlog(`DeviceOrientation: alpha=${alpha?.toFixed?.(2)}, beta=${beta?.toFixed?.(2)}, gamma=${gamma?.toFixed?.(2)} (events=${gyroEventCount})`);
-                    }
 
-                    if (isConnected && ws && ws.readyState === WebSocket.OPEN) {
-                        const now = Date.now();
-                        if (now - lastSendTs >= SEND_INTERVAL_MS) {
-                            lastSendTs = now;
-                            sendGyroData(alpha, beta, gamma);
-                        }
-                    }
+                    // 画面に表示
+                    updateGyroDisplay(alpha, beta, gamma);
+
+                    // 送信頻度を制限 (低遅延のため、間引きは重要)
+                    const now = Date.now();
+                    if (now - lastSendTime < SEND_INTERVAL) return;
+                    lastSendTime = now;
+
+                    // Firebase Realtime Databaseにデータを送信
+                    const dataToSend = {
+                        alpha: parseFloat(alpha.toFixed(2)),
+                        beta: parseFloat(beta.toFixed(2)),
+                        gamma: parseFloat(gamma.toFixed(2)),
+                        timestamp: Date.now()
+                    };
+
+                    // データをデータベースにリアルタイムで書き込む
+                    gyroRef.set(dataToSend)
+                        .then(() => {
+                            // 送信成功（ログ出力は不要）
+                        })
+                        .catch((error) => {
+                            statusEl.innerText = `データ送信エラー: ${error.message}`;
+                            statusEl.className = "status disconnected";
+                            console.error("Firebase送信エラー:", error);
+                        });
                 }
             };
 
@@ -467,12 +356,9 @@
                     const alpha = event.rotationRate.alpha;
                     const beta = event.rotationRate.beta;
                     const gamma = event.rotationRate.gamma;
-                    
+
                     if (alpha !== null || beta !== null || gamma !== null) {
                         dataReceived = true;
-                        if (gyroEventCount % 30 === 1) {
-                            dlog(`DeviceMotion rotationRate: a=${alpha}, b=${beta}, g=${gamma}`);
-                        }
                     }
                 }
             };
@@ -481,260 +367,34 @@
             if (window.DeviceMotionEvent) {
                 window.addEventListener("devicemotion", motionListener, true);
             }
-            
-            gyroEnabled = true;
-            dlog("Gyro listeners started.");
 
+            gyroEnabled = true;
+            console.log("Gyro listeners started. Sending data to Firebase Realtime Database...");
+
+            // データが取得できない場合のタイムアウト
             setTimeout(() => {
                 if (!dataReceived && gyroEnabled) {
-                    statusEl.innerText = "ジャイロデータが取得できていません。デバイスを傾けてみてください。または、ブラウザの設定でセンサーへのアクセスを許可してください。";
-                    dlog("No gyro data received within 3s after enabling.");
+                    statusEl.innerText = "ジャイロデータが取得できていません。デバイスを傾けてみてください。";
+                    statusEl.className = "status disconnected";
                 }
             }, 3000);
         }
 
-        // ジャイロデータの表示（接続前から開始）
-        function setupGyroDisplay() {
-            if (window.DeviceOrientationEvent || window.DeviceMotionEvent) {
-                enableGyroBtn.addEventListener("click", toggleGyroSensor);
-                statusEl.innerText = "「ジャイロを有効化」ボタンを押してジャイロセンサーの許可を与えてください。";
-            } else {
-                statusEl.innerText = "このデバイスはジャイロをサポートしていません";
-                enableGyroBtn.disabled = true;
-                connectBtn.disabled = true;
-                updateGyroDisplay(null, null, null);
-                dlog("This device/browser does not support gyro sensors.");
-            }
+        // ジャイロ有効化/無効化ボタンのイベントリスナー
+        enableGyroBtn.addEventListener("click", toggleGyroSensor);
+
+        // ページ読み込み時の初期化
+        if (window.DeviceOrientationEvent || window.DeviceMotionEvent) {
+            statusEl.innerText = "「ジャイロを有効化」ボタンを押してジャイロセンサーの許可を与えてください。";
+        } else {
+            statusEl.innerText = "このデバイスはジャイロをサポートしていません";
+            statusEl.className = "status disconnected";
+            enableGyroBtn.disabled = true;
+            updateGyroDisplay(null, null, null);
         }
 
-        // WebSocketに接続
-        function connectToWebSocket() {
-            const url = websocketUrlInput.value.trim();
-            if (!url) {
-                statusEl.innerText = "WebSocket URLを入力してください。";
-                dlog("WebSocket URL is empty");
-                return;
-            }
-
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                dlog("Already connected to WebSocket");
-                return;
-            }
-
-            try {
-                dlog(`Connecting to WebSocket: ${url}`);
-                statusEl.innerText = "WebSocketに接続中...";
-                
-                ws = new WebSocket(url);
-
-                ws.onopen = () => {
-                    isConnected = true;
-                    statusEl.innerText = "接続成功！ データを送信中...";
-                    connectBtn.textContent = "切断";
-                    connectBtn.classList.add("connected");
-                    dlog("WebSocket connection opened");
-                };
-
-                ws.onmessage = (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-                        dlog(`Received: ${JSON.stringify(data)}`);
-                        
-                        // 方向データの処理
-                        if (data.Direction) {
-                            dlog(`Direction data received: ${data.Direction} (timestamp: ${data.Timestamp || 'none'})`);
-                        }
-                    } catch (e) {
-                        dlog(`Received (non-JSON): ${event.data}`);
-                    }
-                };
-
-                ws.onerror = (error) => {
-                    dlog(`WebSocket error: ${error.message || 'Unknown error'}`);
-                    statusEl.innerText = "WebSocketエラーが発生しました。";
-                };
-
-                ws.onclose = (event) => {
-                    isConnected = false;
-                    statusEl.innerText = "切断しました。接続ボタンを押して再接続できます。";
-                    connectBtn.textContent = "WebSocketに接続";
-                    connectBtn.classList.remove("connected");
-                    dlog(`WebSocket connection closed (code: ${event.code}, reason: ${event.reason || 'none'})`);
-                    ws = null;
-                };
-
-            } catch (error) {
-                dlog(`WebSocket connection error: ${error.message}`);
-                statusEl.innerText = `接続エラー: ${error.message}`;
-            }
-        }
-
-        // WebSocketから切断
-        function disconnectFromWebSocket() {
-            if (ws) {
-                ws.close();
-                isConnected = false;
-                statusEl.innerText = "切断しました。";
-                connectBtn.textContent = "WebSocketに接続";
-                connectBtn.classList.remove("connected");
-                dlog("WebSocket connection closed by user");
-            }
-        }
-
-        // ジャイロデータを送信
-        function sendGyroData(alpha, beta, gamma) {
-            if (!isConnected || !ws || ws.readyState !== WebSocket.OPEN) {
-                return;
-            }
-
-            try {
-                const payload = {
-                    type: "gyro",
-                    alpha: alpha,
-                    beta: beta,
-                    gamma: gamma,
-                    timestamp: new Date().toISOString()
-                };
-
-                const json = JSON.stringify(payload);
-                ws.send(json);
-                if (gyroEventCount % 10 === 1) {
-                    dlog(`Gyro data sent: alpha=${alpha.toFixed(2)}, beta=${beta.toFixed(2)}, gamma=${gamma.toFixed(2)}`);
-                }
-            } catch (error) {
-                dlog(`Error sending gyro data: ${error.message}`);
-            }
-        }
-
-        // 方向データを送信
-        function sendDirection(direction) {
-            if (!isConnected || !ws || ws.readyState !== WebSocket.OPEN) {
-                if (!ws || ws.readyState !== WebSocket.CONNECTING) {
-                    connectToWebSocket();
-                }
-                // 接続を待つ
-                setTimeout(() => {
-                    if (isConnected && ws && ws.readyState === WebSocket.OPEN) {
-                        sendDirectionData(direction);
-                    } else {
-                        dlog("Failed to connect, cannot send direction");
-                    }
-                }, 500);
-                return;
-            }
-            sendDirectionData(direction);
-        }
-
-        // 方向データを送信（内部関数）
-        function sendDirectionData(direction) {
-            if (!isConnected || !ws || ws.readyState !== WebSocket.OPEN) {
-                dlog("Not connected, cannot send direction");
-                return;
-            }
-
-            try {
-                const payload = {
-                    Direction: direction,
-                    Timestamp: new Date().toISOString()
-                };
-
-                const json = JSON.stringify(payload);
-                ws.send(json);
-                dlog(`Direction sent: ${direction}`);
-            } catch (error) {
-                dlog(`Error sending direction: ${error.message}`);
-            }
-        }
-
-        // 接続ボタンのイベントリスナー
-        connectBtn.addEventListener("click", () => {
-            if (isConnected) {
-                disconnectFromWebSocket();
-            } else {
-                connectToWebSocket();
-            }
-        });
-
-        // ダミー送信
-        sendDummyBtn.addEventListener("click", () => {
-            if (!isConnected) {
-                connectToWebSocket();
-            }
-            setTimeout(() => {
-                if (isConnected && ws && ws.readyState === WebSocket.OPEN) {
-                    sendGyroData(123.45, 67.89, 10.11);
-                    dlog("Dummy gyro data sent");
-                } else {
-                    dlog("Failed to connect, cannot send dummy data");
-                }
-            }, 500);
-        });
-
-        // ハンバーガーメニューのトグル
-        hamburger.addEventListener("click", () => {
-            menu.classList.toggle("open");
-            menuOverlay.classList.toggle("open");
-        });
-
-        // オーバーレイクリックでメニューを閉じる
-        menuOverlay.addEventListener("click", () => {
-            menu.classList.remove("open");
-            menuOverlay.classList.remove("open");
-        });
-
-        // メニューアイテムのクリック処理
-        menuItems.forEach(item => {
-            item.addEventListener("click", () => {
-                const mode = item.getAttribute("data-mode");
-                setMode(mode);
-                menu.classList.remove("open");
-                menuOverlay.classList.remove("open");
-            });
-        });
-
-        // モード切替
-        function setMode(mode) {
-            currentMode = mode;
-            menuItems.forEach(item => {
-                if (item.getAttribute("data-mode") === mode) {
-                    item.classList.add("active");
-                } else {
-                    item.classList.remove("active");
-                }
-            });
-
-            if (mode === "gyro") {
-                gyroDataEl.style.display = "block";
-                dpadContainer.classList.remove("active");
-                enableGyroBtn.style.display = "inline-block";
-                statusEl.innerText = "「ジャイロを有効化」ボタンを押してジャイロセンサーの許可を与えてください。";
-            } else if (mode === "dpad") {
-                gyroDataEl.style.display = "none";
-                dpadContainer.classList.add("active");
-                enableGyroBtn.style.display = "none";
-                connectBtn.disabled = false;
-                statusEl.innerText = "十字ボタンをタップして操作してください。";
-            }
-        }
-
-        // 十字ボタンのイベント処理
-        dpadButtons.forEach(button => {
-            button.addEventListener("click", () => {
-                const direction = button.getAttribute("data-direction");
-                sendDirection(direction);
-            });
-            
-            button.addEventListener("touchstart", (e) => {
-                e.preventDefault();
-                const direction = button.getAttribute("data-direction");
-                sendDirection(direction);
-            });
-        });
-
-        // ページ読み込み時にジャイロ表示を開始
-        setupGyroDisplay();
-        setMode("gyro"); // デフォルトはジャイロモード
-        dlog("WebSocket client initialized");
+        // Firebase接続状態を監視
+        gyroRef.onDisconnect().cancel();
     </script>
 </body>
 </html>
