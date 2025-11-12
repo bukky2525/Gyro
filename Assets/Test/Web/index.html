@@ -327,12 +327,12 @@
             <div id="gyroMode" class="active">
                 <div class="instructions">
                     <h3>ジャイロモード</h3>
-                    <p>スマホを横持ちで操作します</p>
+                    <p>スマホを横持ちで操作します（充電ポートが右側）</p>
                     <ul style="text-align: left; padding-left: 20px; margin-top: 10px;">
-                        <li>Y軸が+ → 前進</li>
-                        <li>Y軸が- → 後退</li>
-                        <li>X軸が- → 左移動</li>
-                        <li>X軸が+ → 右移動</li>
+                        <li>Y軸が+ → 後退</li>
+                        <li>Y軸が- → 前進</li>
+                        <li>X軸が- → 右移動</li>
+                        <li>X軸が+ → 左移動</li>
                     </ul>
                 </div>
 
@@ -571,22 +571,22 @@
                     let moveZ = 0;
                     let moveX = 0;
 
-                    // 前後（Y軸）
-                    // Y軸が+のときは前に進む、Y軸が-のとき後ろに進む
+                    // 前後（Y軸）- 全部逆
+                    // Y軸が+のときは後ろに進む、Y軸が-のとき前に進む
                     if (beta > threshold) {
-                        moveZ = 1; // Y軸が+ → 前進
+                        moveZ = -1; // Y軸が+ → 後退
                     } else if (beta < -threshold) {
-                        moveZ = -1; // Y軸が- → 後退
+                        moveZ = 1; // Y軸が- → 前進
                     } else {
                         moveZ = 0; // 閾値内の場合は0にリセット
                     }
 
-                    // 左右（X軸）
-                    // X軸が-のときは左に進む、X軸が+のときは右に進む
+                    // 左右（X軸）- 全部逆
+                    // X軸が-のときは右に進む、X軸が+のときは左に進む
                     if (gamma < -threshold) {
-                        moveX = -1; // X軸が- → 左
+                        moveX = 1; // X軸が- → 右
                     } else if (gamma > threshold) {
-                        moveX = 1; // X軸が+ → 右
+                        moveX = -1; // X軸が+ → 左
                     } else {
                         moveX = 0; // 閾値内の場合は0にリセット
                     }
