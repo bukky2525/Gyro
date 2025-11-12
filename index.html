@@ -442,11 +442,18 @@
         let gyroEnabled = false;
         let gyroListener = null;
         let lastSendTime = 0;
-        const SEND_INTERVAL = 50; // 20 FPS (50ms)
+        const SEND_INTERVAL = 100; // 10 FPS (100ms) - データベース負荷を軽減
 
         // 移動方向の状態（十字ボタン用）
         let moveX = 0; // -1: 左, 0: なし, 1: 右
         let moveZ = 0; // -1: 後ろ, 0: なし, 1: 前
+        
+        // 前回送信した値を保持（値が変更されたときだけ送信）
+        let lastSentX = null;
+        let lastSentZ = null;
+        
+        // 定期的な送信のタイマーID
+        let dpadIntervalId = null;
 
         // ハンバーガーメニューのトグル
         hamburgerMenu.addEventListener('click', () => {
@@ -495,12 +502,21 @@
             sideMenu.classList.remove('active');
         }
 
-        // Firebaseに移動データを送信
+        // Firebaseに移動データを送信（値が変更されたときだけ送信）
         function sendMovement(x, z) {
+            // 前回の値と同じ場合は送信しない（データベース負荷を軽減）
+            if (lastSentX === x && lastSentZ === z) {
+                return;
+            }
+            
+            // 値が変更された場合のみ送信
+            lastSentX = x;
+            lastSentZ = z;
+            
+            // 最小限のデータだけ送信（timestampは削除）
             const dataToSend = {
                 moveX: x,
-                moveZ: z,
-                timestamp: Date.now()
+                moveZ: z
             };
 
             controlRef.set(dataToSend)
@@ -592,6 +608,8 @@
                         moveZ = 1; // 前
                     } else if (beta < -threshold) {
                         moveZ = -1; // 後ろ
+                    } else {
+                        moveZ = 0; // 閾値内の場合は0にリセット
                     }
 
                     // 左右
@@ -599,8 +617,11 @@
                         moveX = -1; // 左
                     } else if (gamma > threshold) {
                         moveX = 1; // 右
+                    } else {
+                        moveX = 0; // 閾値内の場合は0にリセット
                     }
 
+                    // 値が変更されたときだけ送信
                     sendMovement(moveX, moveZ);
                 }
             };
@@ -695,11 +716,26 @@
         setupDpadButton(dpadButtons.right, 'right');
 
         // 定期的に移動データを送信（十字ボタン用）
-        setInterval(() => {
-            if (currentMode === 'dpad') {
-                sendMovement(moveX, moveZ);
+        // ただし、moveX=0かつmoveZ=0のときは送信しない（データベース負荷を軽減）
+        function startDpadInterval() {
+            if (dpadIntervalId !== null) {
+                clearInterval(dpadIntervalId);
             }
-        }, SEND_INTERVAL);
+            dpadIntervalId = setInterval(() => {
+                if (currentMode === 'dpad') {
+                    // 値が0,0でない場合、または前回送信した値と異なる場合のみ送信
+                    if (moveX !== 0 || moveZ !== 0) {
+                        sendMovement(moveX, moveZ);
+                    } else if (lastSentX !== 0 || lastSentZ !== 0) {
+                        // 0,0に戻ったときは一度だけ送信して停止
+                        sendMovement(0, 0);
+                    }
+                }
+            }, SEND_INTERVAL);
+        }
+        
+        // 初期化時にタイマーを開始
+        startDpadInterval();
 
         // 初期状態
         if (window.DeviceOrientationEvent || window.DeviceMotionEvent) {
