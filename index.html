@@ -2,8 +2,8 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ジャイロ センサー送信</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>スマホコントローラー</title>
     
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
@@ -14,20 +14,134 @@
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            touch-action: none;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
         }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            padding: 20px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* ハンバーガーメニュー */
+        .hamburger-menu {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+            cursor: pointer;
+            width: 40px;
+            height: 40px;
             display: flex;
+            flex-direction: column;
+            justify-content: space-around;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 8px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .hamburger-menu span {
+            display: block;
+            height: 3px;
+            width: 100%;
+            background: #333;
+            border-radius: 3px;
+            transition: all 0.3s;
+        }
+
+        .hamburger-menu.active span:nth-child(1) {
+            transform: rotate(45deg) translate(8px, 8px);
+        }
+
+        .hamburger-menu.active span:nth-child(2) {
+            opacity: 0;
+        }
+
+        .hamburger-menu.active span:nth-child(3) {
+            transform: rotate(-45deg) translate(8px, -8px);
+        }
+
+        /* サイドメニュー */
+        .side-menu {
+            position: fixed;
+            top: 0;
+            left: -300px;
+            width: 280px;
+            height: 100vh;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.2);
+            transition: left 0.3s;
+            z-index: 999;
+            padding: 80px 20px 20px;
+            overflow-y: auto;
+        }
+
+        .side-menu.active {
+            left: 0;
+        }
+
+        .side-menu h2 {
+            margin-bottom: 20px;
+            color: #333;
+            font-size: 24px;
+        }
+
+        .mode-selector {
+            margin-bottom: 30px;
+        }
+
+        .mode-selector h3 {
+            margin-bottom: 15px;
+            color: #666;
+            font-size: 18px;
+        }
+
+        .mode-btn {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            margin-bottom: 10px;
+            background: #f0f0f0;
+            border: 2px solid transparent;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        .mode-btn.active {
+            background: #2196F3;
+            color: white;
+            border-color: #1976D2;
+        }
+
+        .mode-btn:hover {
+            background: #e0e0e0;
+        }
+
+        .mode-btn.active:hover {
+            background: #1976D2;
+        }
+
+        /* メインコンテンツ */
+        .main-content {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
+            padding: 20px;
         }
 
         .container {
-            background: white;
+            background: rgba(255, 255, 255, 0.95);
             border-radius: 20px;
             padding: 30px;
             max-width: 600px;
@@ -43,7 +157,7 @@
         }
 
         .status {
-            font-size: 1.2em;
+            font-size: 1.1em;
             margin: 20px 0;
             padding: 15px;
             background-color: #f0f0f0;
@@ -62,9 +176,34 @@
             color: #721c24;
         }
 
-        .status.connecting {
-            background-color: #fff3cd;
-            color: #856404;
+        /* ジャイロモード表示 */
+        #gyroMode {
+            display: none;
+        }
+
+        #gyroMode.active {
+            display: block;
+        }
+
+        .gyro-value {
+            margin: 10px 0;
+            padding: 12px;
+            background-color: white;
+            border-left: 4px solid #4CAF50;
+            border-radius: 4px;
+        }
+
+        .gyro-label {
+            font-weight: bold;
+            color: #333;
+            display: inline-block;
+            min-width: 100px;
+        }
+
+        .gyro-number {
+            color: #2196F3;
+            font-size: 1.2em;
+            font-weight: bold;
         }
 
         button {
@@ -98,42 +237,78 @@
             background-color: #f57c00;
         }
 
-        #data {
-            background-color: #f9f9f9;
-            padding: 20px;
-            border-radius: 8px;
-            border: 1px solid #ddd;
-            min-height: 150px;
-            text-align: left;
-            font-size: 1.1em;
-            line-height: 1.8;
-            margin-top: 20px;
+        /* 十字ボタンモード */
+        #dpadMode {
+            display: none;
         }
 
-        .gyro-value {
-            margin: 10px 0;
-            padding: 12px;
-            background-color: white;
-            border-left: 4px solid #4CAF50;
-            border-radius: 4px;
+        #dpadMode.active {
+            display: block;
         }
 
-        .gyro-label {
+        .dpad-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 40px 0;
+            position: relative;
+            width: 200px;
+            height: 200px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .dpad-button {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            background: rgba(33, 150, 243, 0.8);
+            border: 3px solid #1976D2;
+            border-radius: 12px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
             font-weight: bold;
-            color: #333;
-            display: inline-block;
-            min-width: 100px;
+            color: white;
+            transition: all 0.1s;
+            touch-action: none;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
         }
 
-        .gyro-number {
-            color: #2196F3;
-            font-size: 1.2em;
-            font-weight: bold;
+        .dpad-button:active {
+            background: rgba(25, 118, 210, 1);
+            transform: scale(0.95);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         }
 
-        .gyro-unit {
-            color: #666;
-            font-size: 0.9em;
+        .dpad-up {
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .dpad-down {
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .dpad-left {
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .dpad-right {
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .dpad-button span {
+            pointer-events: none;
         }
 
         .instructions {
@@ -152,42 +327,87 @@
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>📱 ジャイロ センサー送信</h1>
-        
-        <div class="instructions">
-            <h3>使い方</h3>
-            <ol style="text-align: left; padding-left: 20px;">
-                <li>「ジャイロを有効化」ボタンを押してジャイロセンサーの許可を与えてください</li>
-                <li>自動的にジャイロデータがFirebase Realtime Databaseに送信されます</li>
-                <li>Unity側でデータを受信してゲーム操作に反映されます</li>
-            </ol>
-        </div>
+    <!-- ハンバーガーメニュー -->
+    <div class="hamburger-menu" id="hamburgerMenu">
+        <span></span>
+        <span></span>
+        <span></span>
+    </div>
 
-        <p id="status" class="status disconnected">まず「ジャイロを有効化」ボタンを押してジャイロセンサーの許可を与えてください。</p>
-        <button id="enableGyroBtn">ジャイロを有効化</button>
-        
-        <div id="data">
-            <div class="gyro-value">
-                <span class="gyro-label">Alpha (Z軸):</span>
-                <span class="gyro-number" id="alpha">---</span>
-                <span class="gyro-unit">° (0-360)</span>
+    <!-- サイドメニュー -->
+    <div class="side-menu" id="sideMenu">
+        <h2>設定</h2>
+        <div class="mode-selector">
+            <h3>コントロールモード</h3>
+            <button class="mode-btn active" id="gyroModeBtn">ジャイロモード</button>
+            <button class="mode-btn" id="dpadModeBtn">十字ボタン</button>
+        </div>
+    </div>
+
+    <!-- メインコンテンツ -->
+    <div class="main-content">
+        <div class="container">
+            <h1>📱 スマホコントローラー</h1>
+            
+            <!-- ジャイロモード -->
+            <div id="gyroMode" class="active">
+                <div class="instructions">
+                    <h3>ジャイロモード</h3>
+                    <p>スマホを縦持ちで操作します</p>
+                    <ul style="text-align: left; padding-left: 20px; margin-top: 10px;">
+                        <li>前に倒す → 前進</li>
+                        <li>後ろに傾ける → 後退</li>
+                        <li>左に傾ける → 左移動</li>
+                        <li>右に傾ける → 右移動</li>
+                    </ul>
+                </div>
+
+                <p id="status" class="status disconnected">「ジャイロを有効化」ボタンを押してジャイロセンサーの許可を与えてください。</p>
+                <button id="enableGyroBtn">ジャイロを有効化</button>
+                
+                <div id="data">
+                    <div class="gyro-value">
+                        <span class="gyro-label">Beta (X軸):</span>
+                        <span class="gyro-number" id="beta">---</span>
+                        <span class="gyro-unit">°</span>
+                    </div>
+                    <div class="gyro-value">
+                        <span class="gyro-label">Gamma (Y軸):</span>
+                        <span class="gyro-number" id="gamma">---</span>
+                        <span class="gyro-unit">°</span>
+                    </div>
+                </div>
             </div>
-            <div class="gyro-value">
-                <span class="gyro-label">Beta (X軸):</span>
-                <span class="gyro-number" id="beta">---</span>
-                <span class="gyro-unit">° (-180 to 180)</span>
-            </div>
-            <div class="gyro-value">
-                <span class="gyro-label">Gamma (Y軸):</span>
-                <span class="gyro-number" id="gamma">---</span>
-                <span class="gyro-unit">° (-90 to 90)</span>
+
+            <!-- 十字ボタンモード -->
+            <div id="dpadMode">
+                <div class="instructions">
+                    <h3>十字ボタンモード</h3>
+                    <p>ボタンをタップまたは長押しして移動します</p>
+                </div>
+
+                <p id="statusDpad" class="status connected">十字ボタンで操作できます</p>
+                
+                <div class="dpad-container">
+                    <div class="dpad-button dpad-up" id="btnUp" data-direction="up">
+                        <span>↑</span>
+                    </div>
+                    <div class="dpad-button dpad-left" id="btnLeft" data-direction="left">
+                        <span>←</span>
+                    </div>
+                    <div class="dpad-button dpad-right" id="btnRight" data-direction="right">
+                        <span>→</span>
+                    </div>
+                    <div class="dpad-button dpad-down" id="btnDown" data-direction="down">
+                        <span>↓</span>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
-        // Firebase設定（提供された情報を使用）
+        // Firebase設定
         const firebaseConfig = {
             apiKey: "AIzaSyDDbQ1fClyVJgXeYlRPr9KVmpN8Z0L-ceY",
             authDomain: "gyro-67262.firebaseapp.com",
@@ -202,104 +422,139 @@
         // Firebase初期化
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
-        
-        // Unityと共有するデータベースパスへの参照を取得
-        const gyroRef = database.ref('gyro/data');
-        // 🚨 データベースには { "gyro": { "data": {...} } } という構造で保存されます
+        const controlRef = database.ref('control/movement');
 
-        const statusEl = document.getElementById("status");
-        const alphaEl = document.getElementById("alpha");
-        const betaEl = document.getElementById("beta");
-        const gammaEl = document.getElementById("gamma");
-        const enableGyroBtn = document.getElementById("enableGyroBtn");
+        // UI要素
+        const hamburgerMenu = document.getElementById('hamburgerMenu');
+        const sideMenu = document.getElementById('sideMenu');
+        const gyroModeBtn = document.getElementById('gyroModeBtn');
+        const dpadModeBtn = document.getElementById('dpadModeBtn');
+        const gyroMode = document.getElementById('gyroMode');
+        const dpadMode = document.getElementById('dpadMode');
+        const statusEl = document.getElementById('status');
+        const statusDpadEl = document.getElementById('statusDpad');
+        const enableGyroBtn = document.getElementById('enableGyroBtn');
+        const betaEl = document.getElementById('beta');
+        const gammaEl = document.getElementById('gamma');
 
-        let gyroListener = null;
-        let motionListener = null;
+        // 状態変数
+        let currentMode = 'gyro'; // 'gyro' or 'dpad'
         let gyroEnabled = false;
-        let dataReceived = false;
+        let gyroListener = null;
         let lastSendTime = 0;
-        const SEND_INTERVAL = 33; // 30 FPS相当 (33ms) - 低遅延のため
+        const SEND_INTERVAL = 50; // 20 FPS (50ms)
 
-        // ジャイロデータを数値で表示する関数
-        function updateGyroDisplay(alpha, beta, gamma) {
-            alphaEl.textContent = alpha !== null && alpha !== undefined ? alpha.toFixed(2) : "---";
-            betaEl.textContent = beta !== null && beta !== undefined ? beta.toFixed(2) : "---";
-            gammaEl.textContent = gamma !== null && gamma !== undefined ? gamma.toFixed(2) : "---";
-        }
+        // 移動方向の状態（十字ボタン用）
+        let moveX = 0; // -1: 左, 0: なし, 1: 右
+        let moveZ = 0; // -1: 後ろ, 0: なし, 1: 前
 
-        // ジャイロを有効化/無効化する関数（トグル）
-        function toggleGyroSensor() {
+        // ハンバーガーメニューのトグル
+        hamburgerMenu.addEventListener('click', () => {
+            hamburgerMenu.classList.toggle('active');
+            sideMenu.classList.toggle('active');
+        });
+
+        // モード切り替え
+        gyroModeBtn.addEventListener('click', () => {
+            if (currentMode !== 'gyro') {
+                switchMode('gyro');
+            }
+        });
+
+        dpadModeBtn.addEventListener('click', () => {
+            if (currentMode !== 'dpad') {
+                switchMode('dpad');
+            }
+        });
+
+        function switchMode(mode) {
+            currentMode = mode;
+            
+            // ジャイロを無効化
             if (gyroEnabled) {
                 disableGyroSensor();
-            } else {
-                enableGyroSensor();
             }
+            
+            // UI更新
+            if (mode === 'gyro') {
+                gyroMode.classList.add('active');
+                dpadMode.classList.remove('active');
+                gyroModeBtn.classList.add('active');
+                dpadModeBtn.classList.remove('active');
+                // 移動を停止
+                sendMovement(0, 0);
+            } else {
+                gyroMode.classList.remove('active');
+                dpadMode.classList.add('active');
+                gyroModeBtn.classList.remove('active');
+                dpadModeBtn.classList.add('active');
+            }
+            
+            // メニューを閉じる
+            hamburgerMenu.classList.remove('active');
+            sideMenu.classList.remove('active');
         }
 
-        // ジャイロを有効化する関数
+        // Firebaseに移動データを送信
+        function sendMovement(x, z) {
+            const dataToSend = {
+                moveX: x,
+                moveZ: z,
+                timestamp: Date.now()
+            };
+
+            controlRef.set(dataToSend)
+                .catch((error) => {
+                    console.error("Firebase送信エラー:", error);
+                });
+        }
+
+        // ジャイロモード
         function enableGyroSensor() {
-            if (gyroEnabled) {
-                return;
-            }
+            if (gyroEnabled) return;
 
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                // iOS 13+ の場合、明示的な許可が必要
                 DeviceOrientationEvent.requestPermission()
                     .then(response => {
                         if (response == 'granted') {
                             startGyroListeners();
-                            statusEl.innerText = "ジャイロセンサーが有効になりました！データをFirebaseに送信中...";
+                            statusEl.innerText = "ジャイロセンサーが有効になりました！";
                             statusEl.className = "status connected";
                             updateGyroButtonState(true);
                         } else {
-                            statusEl.innerText = "ジャイロセンサーの許可が拒否されました。ブラウザの設定から許可してください。";
+                            statusEl.innerText = "ジャイロセンサーの許可が拒否されました。";
                             statusEl.className = "status disconnected";
-                            console.error("ジャイロセンサーの許可が拒否されました");
                         }
                     })
                     .catch(error => {
                         statusEl.innerText = `ジャイロセンサーの許可エラー: ${error.message}`;
                         statusEl.className = "status disconnected";
-                        console.error("ジャイロセンサーの許可エラー:", error);
-                        startGyroListeners();
-                        updateGyroButtonState(true);
                     });
             } else {
-                // 通常のブラウザ（許可APIなし）
                 startGyroListeners();
-                statusEl.innerText = "ジャイロセンサーを有効化しました。データをFirebaseに送信中...";
+                statusEl.innerText = "ジャイロセンサーを有効化しました。";
                 statusEl.className = "status connected";
                 updateGyroButtonState(true);
             }
         }
 
-        // ジャイロを無効化する関数
         function disableGyroSensor() {
-            if (!gyroEnabled) {
-                return;
-            }
+            if (!gyroEnabled) return;
 
             if (gyroListener) {
                 window.removeEventListener("deviceorientation", gyroListener, true);
                 gyroListener = null;
             }
 
-            if (motionListener) {
-                window.removeEventListener("devicemotion", motionListener, true);
-                motionListener = null;
-            }
-
             gyroEnabled = false;
-            dataReceived = false;
-
-            updateGyroDisplay(null, null, null);
+            updateGyroDisplay(null, null);
+            sendMovement(0, 0);
 
             statusEl.innerText = "ジャイロセンサーを無効化しました。";
             statusEl.className = "status disconnected";
             updateGyroButtonState(false);
         }
 
-        // ジャイロボタンの状態を更新
         function updateGyroButtonState(enabled) {
             if (enabled) {
                 enableGyroBtn.textContent = "ジャイロを無効化";
@@ -310,91 +565,150 @@
             }
         }
 
-        // ジャイロリスナーを開始
         function startGyroListeners() {
             if (gyroEnabled) return;
 
             gyroListener = (event) => {
-                const alpha = event.alpha;
-                const beta = event.beta;
-                const gamma = event.gamma;
+                const beta = event.beta; // X軸（前後）-90 to 90
+                const gamma = event.gamma; // Y軸（左右）-180 to 180
 
-                if (alpha !== null && beta !== null && gamma !== null) {
-                    dataReceived = true;
+                if (beta !== null && gamma !== null) {
+                    updateGyroDisplay(beta, gamma);
 
-                    // 画面に表示
-                    updateGyroDisplay(alpha, beta, gamma);
-
-                    // 送信頻度を制限 (低遅延のため、間引きは重要)
                     const now = Date.now();
                     if (now - lastSendTime < SEND_INTERVAL) return;
                     lastSendTime = now;
 
-                    // Firebase Realtime Databaseにデータを送信
-                    const dataToSend = {
-                        alpha: parseFloat(alpha.toFixed(2)),
-                        beta: parseFloat(beta.toFixed(2)),
-                        gamma: parseFloat(gamma.toFixed(2)),
-                        timestamp: Date.now()
-                    };
+                    // 移動方向を計算（縦持ち）
+                    // beta: 前に倒すと正の値、後ろに傾けると負の値
+                    // gamma: 左に傾けると負の値、右に傾けると正の値
+                    const threshold = 15; // 傾きの閾値（度）
+                    
+                    let moveZ = 0;
+                    let moveX = 0;
 
-                    // データをデータベースにリアルタイムで書き込む
-                    gyroRef.set(dataToSend)
-                        .then(() => {
-                            // 送信成功（ログ出力は不要）
-                        })
-                        .catch((error) => {
-                            statusEl.innerText = `データ送信エラー: ${error.message}`;
-                            statusEl.className = "status disconnected";
-                            console.error("Firebase送信エラー:", error);
-                        });
-                }
-            };
-
-            motionListener = (event) => {
-                if (event.rotationRate) {
-                    const alpha = event.rotationRate.alpha;
-                    const beta = event.rotationRate.beta;
-                    const gamma = event.rotationRate.gamma;
-
-                    if (alpha !== null || beta !== null || gamma !== null) {
-                        dataReceived = true;
+                    // 前後
+                    if (beta > threshold) {
+                        moveZ = 1; // 前
+                    } else if (beta < -threshold) {
+                        moveZ = -1; // 後ろ
                     }
+
+                    // 左右
+                    if (gamma < -threshold) {
+                        moveX = -1; // 左
+                    } else if (gamma > threshold) {
+                        moveX = 1; // 右
+                    }
+
+                    sendMovement(moveX, moveZ);
                 }
             };
 
             window.addEventListener("deviceorientation", gyroListener, true);
-            if (window.DeviceMotionEvent) {
-                window.addEventListener("devicemotion", motionListener, true);
-            }
-
             gyroEnabled = true;
-            console.log("Gyro listeners started. Sending data to Firebase Realtime Database...");
-
-            // データが取得できない場合のタイムアウト
-            setTimeout(() => {
-                if (!dataReceived && gyroEnabled) {
-                    statusEl.innerText = "ジャイロデータが取得できていません。デバイスを傾けてみてください。";
-                    statusEl.className = "status disconnected";
-                }
-            }, 3000);
         }
 
-        // ジャイロ有効化/無効化ボタンのイベントリスナー
-        enableGyroBtn.addEventListener("click", toggleGyroSensor);
+        function updateGyroDisplay(beta, gamma) {
+            betaEl.textContent = beta !== null && beta !== undefined ? beta.toFixed(2) : "---";
+            gammaEl.textContent = gamma !== null && gamma !== undefined ? gamma.toFixed(2) : "---";
+        }
 
-        // ページ読み込み時の初期化
+        enableGyroBtn.addEventListener('click', () => {
+            if (gyroEnabled) {
+                disableGyroSensor();
+            } else {
+                enableGyroSensor();
+            }
+        });
+
+        // 十字ボタン
+        const dpadButtons = {
+            up: document.getElementById('btnUp'),
+            down: document.getElementById('btnDown'),
+            left: document.getElementById('btnLeft'),
+            right: document.getElementById('btnRight')
+        };
+
+        // タッチイベントとマウスイベントの処理
+        function setupDpadButton(button, direction) {
+            const setActive = (e) => {
+                e.preventDefault();
+                button.classList.add('active');
+                updateMovement(direction, true);
+            };
+
+            const setInactive = (e) => {
+                e.preventDefault();
+                button.classList.remove('active');
+                updateMovement(direction, false);
+            };
+
+            // タッチイベント
+            button.addEventListener('touchstart', setActive, { passive: false });
+            button.addEventListener('touchend', setInactive, { passive: false });
+            button.addEventListener('touchcancel', setInactive, { passive: false });
+
+            // マウスイベント
+            button.addEventListener('mousedown', setActive);
+            button.addEventListener('mouseup', setInactive);
+            button.addEventListener('mouseleave', setInactive);
+        }
+
+        function updateMovement(direction, isActive) {
+            switch (direction) {
+                case 'up':
+                    moveZ = isActive ? 1 : 0;
+                    break;
+                case 'down':
+                    moveZ = isActive ? -1 : 0;
+                    break;
+                case 'left':
+                    moveX = isActive ? -1 : 0;
+                    break;
+                case 'right':
+                    moveX = isActive ? 1 : 0;
+                    break;
+            }
+
+            // 他のボタンが押されている場合はその方向を維持
+            if (!isActive) {
+                // 同じ方向の他のボタンをチェック
+                if (direction === 'up' && dpadButtons.down.classList.contains('active')) {
+                    moveZ = -1;
+                } else if (direction === 'down' && dpadButtons.up.classList.contains('active')) {
+                    moveZ = 1;
+                } else if (direction === 'left' && dpadButtons.right.classList.contains('active')) {
+                    moveX = 1;
+                } else if (direction === 'right' && dpadButtons.left.classList.contains('active')) {
+                    moveX = -1;
+                }
+            }
+
+            sendMovement(moveX, moveZ);
+        }
+
+        // 各ボタンをセットアップ
+        setupDpadButton(dpadButtons.up, 'up');
+        setupDpadButton(dpadButtons.down, 'down');
+        setupDpadButton(dpadButtons.left, 'left');
+        setupDpadButton(dpadButtons.right, 'right');
+
+        // 定期的に移動データを送信（十字ボタン用）
+        setInterval(() => {
+            if (currentMode === 'dpad') {
+                sendMovement(moveX, moveZ);
+            }
+        }, SEND_INTERVAL);
+
+        // 初期状態
         if (window.DeviceOrientationEvent || window.DeviceMotionEvent) {
             statusEl.innerText = "「ジャイロを有効化」ボタンを押してジャイロセンサーの許可を与えてください。";
         } else {
             statusEl.innerText = "このデバイスはジャイロをサポートしていません";
             statusEl.className = "status disconnected";
             enableGyroBtn.disabled = true;
-            updateGyroDisplay(null, null, null);
         }
-
-        // Firebase接続状態を監視
-        gyroRef.onDisconnect().cancel();
     </script>
 </body>
 </html>
