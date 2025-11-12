@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ジャイロ センサー送信</title>
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    
     <style>
         * {
             margin: 0;
@@ -62,31 +67,6 @@
             color: #856404;
         }
 
-        .input-group {
-            margin-bottom: 20px;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 8px;
-            color: #555;
-            font-weight: 500;
-        }
-
-        input[type="text"] {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-size: 16px;
-            transition: border-color 0.3s;
-        }
-
-        input[type="text"]:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-
         button {
             font-size: 1.1em;
             padding: 12px 25px;
@@ -97,6 +77,8 @@
             cursor: pointer;
             margin: 10px 5px;
             transition: background-color 0.3s;
+            width: 100%;
+            max-width: 300px;
         }
 
         button:hover {
@@ -176,21 +158,14 @@
         <div class="instructions">
             <h3>使い方</h3>
             <ol style="text-align: left; padding-left: 20px;">
-                <li>中継サーバーを起動してください（Node.js server.js）</li>
-                <li>サーバーのIPアドレスを入力してください（例: ws://192.168.x.x:8080）</li>
                 <li>「ジャイロを有効化」ボタンを押してジャイロセンサーの許可を与えてください</li>
-                <li>自動的にジャイロデータがサーバーに送信されます</li>
+                <li>自動的にジャイロデータがFirebase Realtime Databaseに送信されます</li>
+                <li>Unity側でデータを受信してゲーム操作に反映されます</li>
             </ol>
-        </div>
-
-        <div class="input-group">
-            <label for="serverUrl">サーバーURL</label>
-            <input type="text" id="serverUrl" placeholder="ws://192.168.x.x:8080 または ws://localhost:8080" value="ws://localhost:8080">
         </div>
 
         <p id="status" class="status disconnected">まず「ジャイロを有効化」ボタンを押してジャイロセンサーの許可を与えてください。</p>
         <button id="enableGyroBtn">ジャイロを有効化</button>
-        <button id="connectBtn" disabled>サーバーに接続</button>
         
         <div id="data">
             <div class="gyro-value">
@@ -212,22 +187,38 @@
     </div>
 
     <script>
+        // Firebase設定（提供された情報を使用）
+        const firebaseConfig = {
+            apiKey: "AIzaSyDDbQ1fClyVJgXeYlRPr9KVmpN8Z0L-ceY",
+            authDomain: "gyro-67262.firebaseapp.com",
+            databaseURL: "https://gyro-67262-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "gyro-67262",
+            storageBucket: "gyro-67262.firebasestorage.app",
+            messagingSenderId: "334654487209",
+            appId: "1:334654487209:web:6bdbb65a93f107db1bc7b8",
+            measurementId: "G-CXFVW3T368"
+        };
+
+        // Firebase初期化
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        
+        // Unityと共有するデータベースパスへの参照を取得
+        const gyroRef = database.ref('gyro/data');
+        // 🚨 データベースには { "gyro": { "data": {...} } } という構造で保存されます
+
         const statusEl = document.getElementById("status");
         const alphaEl = document.getElementById("alpha");
         const betaEl = document.getElementById("beta");
         const gammaEl = document.getElementById("gamma");
-        const connectBtn = document.getElementById("connectBtn");
         const enableGyroBtn = document.getElementById("enableGyroBtn");
-        const serverUrlInput = document.getElementById("serverUrl");
 
-        let ws = null;
-        let isConnected = false;
         let gyroListener = null;
         let motionListener = null;
         let gyroEnabled = false;
         let dataReceived = false;
-        let lastSendTs = 0;
-        const SEND_INTERVAL_MS = 50; // 送信頻度（20fps）
+        let lastSendTime = 0;
+        const SEND_INTERVAL = 33; // 30 FPS相当 (33ms) - 低遅延のため
 
         // ジャイロデータを数値で表示する関数
         function updateGyroDisplay(alpha, beta, gamma) {
@@ -252,14 +243,14 @@
             }
 
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                // iOS 13+ の場合、明示的な許可が必要
                 DeviceOrientationEvent.requestPermission()
                     .then(response => {
                         if (response == 'granted') {
                             startGyroListeners();
-                            statusEl.innerText = "ジャイロセンサーが有効になりました！データを取得しています。";
+                            statusEl.innerText = "ジャイロセンサーが有効になりました！データをFirebaseに送信中...";
                             statusEl.className = "status connected";
                             updateGyroButtonState(true);
-                            connectBtn.disabled = false;
                         } else {
                             statusEl.innerText = "ジャイロセンサーの許可が拒否されました。ブラウザの設定から許可してください。";
                             statusEl.className = "status disconnected";
@@ -272,14 +263,13 @@
                         console.error("ジャイロセンサーの許可エラー:", error);
                         startGyroListeners();
                         updateGyroButtonState(true);
-                        connectBtn.disabled = false;
                     });
             } else {
+                // 通常のブラウザ（許可APIなし）
                 startGyroListeners();
-                statusEl.innerText = "ジャイロセンサーを有効化しました。データを取得しています。";
+                statusEl.innerText = "ジャイロセンサーを有効化しました。データをFirebaseに送信中...";
                 statusEl.className = "status connected";
                 updateGyroButtonState(true);
-                connectBtn.disabled = false;
             }
         }
 
@@ -304,14 +294,9 @@
 
             updateGyroDisplay(null, null, null);
 
-            if (isConnected) {
-                disconnectFromServer();
-            }
-
             statusEl.innerText = "ジャイロセンサーを無効化しました。";
             statusEl.className = "status disconnected";
             updateGyroButtonState(false);
-            connectBtn.disabled = true;
         }
 
         // ジャイロボタンの状態を更新
@@ -337,16 +322,32 @@
                 if (alpha !== null && beta !== null && gamma !== null) {
                     dataReceived = true;
 
+                    // 画面に表示
                     updateGyroDisplay(alpha, beta, gamma);
 
-                    // 接続している場合のみサーバーにデータを送信
-                    if (isConnected && ws && ws.readyState === WebSocket.OPEN) {
-                        const now = Date.now();
-                        if (now - lastSendTs >= SEND_INTERVAL_MS) {
-                            lastSendTs = now;
-                            sendGyroData(alpha, beta, gamma);
-                        }
-                    }
+                    // 送信頻度を制限 (低遅延のため、間引きは重要)
+                    const now = Date.now();
+                    if (now - lastSendTime < SEND_INTERVAL) return;
+                    lastSendTime = now;
+
+                    // Firebase Realtime Databaseにデータを送信
+                    const dataToSend = {
+                        alpha: parseFloat(alpha.toFixed(2)),
+                        beta: parseFloat(beta.toFixed(2)),
+                        gamma: parseFloat(gamma.toFixed(2)),
+                        timestamp: Date.now()
+                    };
+
+                    // データをデータベースにリアルタイムで書き込む
+                    gyroRef.set(dataToSend)
+                        .then(() => {
+                            // 送信成功（ログ出力は不要）
+                        })
+                        .catch((error) => {
+                            statusEl.innerText = `データ送信エラー: ${error.message}`;
+                            statusEl.className = "status disconnected";
+                            console.error("Firebase送信エラー:", error);
+                        });
                 }
             };
 
@@ -368,8 +369,9 @@
             }
 
             gyroEnabled = true;
-            console.log("Gyro listeners started.");
+            console.log("Gyro listeners started. Sending data to Firebase Realtime Database...");
 
+            // データが取得できない場合のタイムアウト
             setTimeout(() => {
                 if (!dataReceived && gyroEnabled) {
                     statusEl.innerText = "ジャイロデータが取得できていません。デバイスを傾けてみてください。";
@@ -378,121 +380,22 @@
             }, 3000);
         }
 
-        // サーバーに接続
-        function connectToServer() {
-            const url = serverUrlInput.value.trim();
-            if (!url) {
-                statusEl.innerText = "サーバーURLを入力してください。";
-                statusEl.className = "status disconnected";
-                return;
-            }
-
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                console.log("Already connected to server");
-                return;
-            }
-
-            try {
-                statusEl.innerText = "サーバーに接続中...";
-                statusEl.className = "status connecting";
-
-                ws = new WebSocket(url);
-
-                ws.onopen = () => {
-                    isConnected = true;
-                    statusEl.innerText = "接続成功！ジャイロデータを送信中...";
-                    statusEl.className = "status connected";
-                    console.log("WebSocket connection opened");
-                };
-
-                ws.onmessage = (event) => {
-                    console.log(`Received: ${event.data}`);
-                };
-
-                ws.onerror = (error) => {
-                    statusEl.innerText = "サーバー接続エラーが発生しました。";
-                    statusEl.className = "status disconnected";
-                    console.error("WebSocket error:", error);
-                };
-
-                ws.onclose = (event) => {
-                    isConnected = false;
-                    statusEl.innerText = "切断されました。再接続します...";
-                    statusEl.className = "status disconnected";
-                    console.log(`WebSocket connection closed (code: ${event.code}, reason: ${event.reason || 'none'})`);
-                    ws = null;
-
-                    // 自動再接続
-                    if (gyroEnabled) {
-                        setTimeout(() => {
-                            if (gyroEnabled) {
-                                connectToServer();
-                            }
-                        }, 2000);
-                    }
-                };
-
-            } catch (error) {
-                statusEl.innerText = `接続エラー: ${error.message}`;
-                statusEl.className = "status disconnected";
-                console.error("Connection error:", error);
-            }
-        }
-
-        // サーバーから切断
-        function disconnectFromServer() {
-            if (ws) {
-                ws.close();
-                isConnected = false;
-                statusEl.innerText = "切断しました。";
-                statusEl.className = "status disconnected";
-                console.log("WebSocket connection closed by user");
-            }
-        }
-
-        // ジャイロデータを送信
-        function sendGyroData(alpha, beta, gamma) {
-            if (!isConnected || !ws || ws.readyState !== WebSocket.OPEN) {
-                return;
-            }
-
-            try {
-                const gyroData = {
-                    alpha: alpha,
-                    beta: beta,
-                    gamma: gamma,
-                    timestamp: new Date().toISOString()
-                };
-
-                const json = JSON.stringify(gyroData);
-                ws.send(json);
-            } catch (error) {
-                console.error(`Error sending gyro data: ${error.message}`);
-            }
-        }
-
         // ジャイロ有効化/無効化ボタンのイベントリスナー
         enableGyroBtn.addEventListener("click", toggleGyroSensor);
 
-        // 接続ボタンのイベントリスナー
-        connectBtn.addEventListener("click", () => {
-            if (isConnected) {
-                disconnectFromServer();
-            } else {
-                connectToServer();
-            }
-        });
-
-        // ページ読み込み時にジャイロ表示を開始
+        // ページ読み込み時の初期化
         if (window.DeviceOrientationEvent || window.DeviceMotionEvent) {
             statusEl.innerText = "「ジャイロを有効化」ボタンを押してジャイロセンサーの許可を与えてください。";
         } else {
             statusEl.innerText = "このデバイスはジャイロをサポートしていません";
             statusEl.className = "status disconnected";
             enableGyroBtn.disabled = true;
-            connectBtn.disabled = true;
             updateGyroDisplay(null, null, null);
         }
+
+        // Firebase接続状態を監視
+        gyroRef.onDisconnect().cancel();
     </script>
 </body>
 </html>
+

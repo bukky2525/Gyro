@@ -1,24 +1,32 @@
 using UnityEngine;
 using System;
-using NativeWebSocket;
-using System.Text;
-using System.Threading.Tasks;
-using Newtonsoft.Json;
+using System.Collections;
+
+// Firebase SDKが必要です
+// Firebase Realtime Database SDK for Unityをプロジェクトに追加してください
+// 詳細はREADME.mdを参照してください
+
+// Firebase SDKを使用する場合のコード（コメントアウト）
+/*
+using Firebase;
+using Firebase.Database;
+using Firebase.Extensions;
+*/
 
 [Serializable]
 public struct GyroData
 {
-    public float alpha;
-    public float beta;
-    public float gamma;
-    public string timestamp;
+    public float alpha; // Z軸回転 (ヨー)
+    public float beta;  // X軸回転 (ピッチ)
+    public float gamma; // Y軸回転 (ロール)
+    public long timestamp;
 }
 
 public class Test : MonoBehaviour
 {
-    [Header("WebSocket サーバー設定")]
-    [Tooltip("中継サーバーのWebSocket URL (例: ws://localhost:8080 または ws://192.168.x.x:8080)")]
-    [SerializeField] private string serverUrl = "ws://localhost:8080";
+    [Header("Firebase Realtime Database 設定")]
+    [Tooltip("Firebase Realtime Databaseのパス（デフォルト: gyro/data）")]
+    [SerializeField] private string databasePath = "gyro/data";
     
     [Header("ジャイロデータ設定")]
     [Tooltip("ジャイロデータのログを表示するか")]
@@ -27,171 +35,214 @@ public class Test : MonoBehaviour
     [Tooltip("受信したジャイロデータをUnityの入力として使用するか")]
     [SerializeField] private bool useGyroAsInput = true;
 
-    private WebSocket _websocket;
-    private bool _isConnected = false;
+    [Header("回転対象オブジェクト")]
+    [Tooltip("回転させる対象のGameObject（未設定の場合は自動検索）")]
+    [SerializeField] private GameObject targetObject;
+
+    [Header("回転設定")]
+    [Tooltip("回転の補間速度")]
+    [SerializeField] private float rotationSpeed = 10f;
+
+    // Firebase SDKを使用する場合の変数（コメントアウト）
+    // private DatabaseReference databaseReference;
+    // private FirebaseApp firebaseApp;
+
     private GyroData _latestGyroData;
     private bool _hasGyroData = false;
+    private bool _isFirebaseInitialized = false;
 
     public event Action<GyroData> OnGyroDataReceived;
-    public event Action OnConnected;
-    public event Action OnDisconnected;
-    public event Action<string> OnError;
+    public event Action OnFirebaseInitialized;
+    public event Action<string> OnFirebaseError;
 
-    public bool IsConnected => _isConnected;
+    public bool IsFirebaseInitialized => _isFirebaseInitialized;
     public bool HasGyroData => _hasGyroData;
     public GyroData LatestGyroData => _latestGyroData;
 
-    async void Start()
+    void Start()
     {
-        await ConnectToServer();
+        // ターゲットオブジェクトが見つからない場合、自動検索
+        if (targetObject == null)
+        {
+            targetObject = GameObject.Find("TargetCube");
+            if (targetObject == null)
+            {
+                Debug.LogWarning("ターゲットオブジェクトが見つかりません。シーンに 'TargetCube' という名前のGameObjectを配置してください。");
+            }
+        }
+
+        // Firebase初期化
+        InitializeFirebase();
     }
 
-    private async Task ConnectToServer()
+    private void InitializeFirebase()
     {
-        if (string.IsNullOrEmpty(serverUrl))
+        Debug.Log("Firebase Realtime Databaseの初期化を開始します...");
+
+        // ⚠️ Firebase SDKが必要です
+        // 以下のコードは、Firebase SDKをプロジェクトに追加した後に有効にしてください
+        
+        /*
+        FirebaseApp.CheckAndFixDependenciesAsync().ContinueWithOnMainThread(task =>
         {
-            Debug.LogError("サーバーURLが設定されていません。インスペクターで設定してください。");
+            var dependencyStatus = task.Result;
+            if (dependencyStatus == DependencyStatus.Available)
+            {
+                firebaseApp = FirebaseApp.DefaultInstance;
+                databaseReference = FirebaseDatabase.DefaultInstance.RootReference;
+                
+                _isFirebaseInitialized = true;
+                Debug.Log("Firebase Realtime Databaseの初期化が完了しました。");
+                OnFirebaseInitialized?.Invoke();
+                
+                StartListeningForData();
+            }
+            else
+            {
+                string errorMessage = $"Firebaseの依存関係エラー: {dependencyStatus}";
+                Debug.LogError(errorMessage);
+                OnFirebaseError?.Invoke(errorMessage);
+            }
+        });
+        */
+
+        // デモ用: Firebase SDKが導入されるまでのモックデータ
+        Debug.LogWarning("⚠️ Firebase SDKが導入されていません。");
+        Debug.LogWarning("⚠️ Firebase Realtime Database SDK for Unityをプロジェクトに追加してください。");
+        Debug.LogWarning("⚠️ 詳細はREADME.mdを参照してください。");
+        
+        // モックデータで動作確認（実際のFirebase SDK導入後は削除）
+        StartCoroutine(MockGyroData());
+    }
+
+    private void StartListeningForData()
+    {
+        Debug.Log($"Firebase Realtime Databaseの監視を開始しました。パス: {databasePath}");
+
+        // ⚠️ Firebase SDKが必要です
+        // 以下のコードは、Firebase SDKをプロジェクトに追加した後に有効にしてください
+        
+        /*
+        DatabaseReference gyroRef = databaseReference.Child(databasePath);
+        
+        gyroRef.ValueChanged += HandleValueChanged;
+        */
+    }
+
+    // Firebase SDKを使用する場合のハンドラー（コメントアウト）
+    /*
+    private void HandleValueChanged(object sender, ValueChangedEventArgs args)
+    {
+        if (args.DatabaseError != null)
+        {
+            string errorMessage = $"データベースエラー: {args.DatabaseError.Message}";
+            Debug.LogError(errorMessage);
+            OnFirebaseError?.Invoke(errorMessage);
             return;
         }
 
-        try
+        DataSnapshot snapshot = args.Snapshot;
+        if (snapshot.Exists)
         {
-            Debug.Log($"WebSocketサーバーに接続します: {serverUrl}");
+            string json = snapshot.GetRawJsonValue();
+            Debug.Log($"Firebaseからデータを受信: {json}");
 
-            _websocket = new WebSocket(serverUrl);
-
-            _websocket.OnOpen += () =>
+            try
             {
-                _isConnected = true;
-                Debug.Log("WebSocketサーバーに接続しました！");
+                // JSONをパース
+                GyroData data = JsonUtility.FromJson<GyroData>(json);
                 
-                // Unityクライアントであることをサーバーに通知
-                SendUnityInit();
-                
-                OnConnected?.Invoke();
-            };
+                _latestGyroData = data;
+                _hasGyroData = true;
 
-            _websocket.OnMessage += OnMessageReceived;
+                if (logGyroValues)
+                {
+                    Debug.Log($"ジャイロデータ受信 => Alpha: {data.alpha}, Beta: {data.beta}, Gamma: {data.gamma}");
+                }
 
-            _websocket.OnError += (e) =>
+                // メインスレッドで処理
+                UnityMainThreadDispatcher.Instance.Enqueue(() => {
+                    ProcessGyroData(data);
+                    OnGyroDataReceived?.Invoke(data);
+                });
+            }
+            catch (Exception e)
             {
-                Debug.LogError($"WebSocketエラー: {e}");
-                _isConnected = false;
-                OnError?.Invoke(e);
-            };
-
-            _websocket.OnClose += (e) =>
-            {
-                Debug.Log($"WebSocket接続が閉じられました: {e}");
-                _isConnected = false;
-                OnDisconnected?.Invoke();
-            };
-
-            await _websocket.Connect();
-        }
-        catch (Exception e)
-        {
-            Debug.LogError($"WebSocket接続の初期化に失敗: {e.Message}\n{e.StackTrace}");
-            OnError?.Invoke(e.Message);
+                Debug.LogError($"JSONのパースに失敗: {e.Message}");
+            }
         }
     }
+    */
 
-    private void OnMessageReceived(byte[] bytes)
+    private void ProcessGyroData(GyroData gyroData)
     {
-        try
+        if (!useGyroAsInput)
         {
-            string message = Encoding.UTF8.GetString(bytes);
+            return;
+        }
+
+        // ジャイロデータを使用してUnityの入力として処理
+        if (targetObject != null)
+        {
+            // ジャイロの値をそのまま回転角度として利用
+            // Quaternion.Euler(X軸, Y軸, Z軸)
+            Quaternion targetRotation = Quaternion.Euler(gyroData.beta, gyroData.alpha, gyroData.gamma);
             
-            // UNITY_INITメッセージは無視
-            if (message.Contains("UNITY_INIT"))
-            {
-                return;
-            }
-
-            Debug.Log($"データ受信: {message}");
-            
-            // JSONとしてジャイロデータをパース
-            GyroData gyroData = JsonConvert.DeserializeObject<GyroData>(message);
-            
-            _latestGyroData = gyroData;
-            _hasGyroData = true;
-
-            if (logGyroValues)
-            {
-                Debug.Log($"ジャイロデータ受信 => Alpha: {gyroData.alpha}, Beta: {gyroData.beta}, Gamma: {gyroData.gamma}");
-            }
-
-            OnGyroDataReceived?.Invoke(gyroData);
-        }
-        catch (JsonException e)
-        {
-            Debug.LogWarning($"JSONのパースに失敗: {e.Message}");
-        }
-        catch (Exception e)
-        {
-            Debug.LogError($"メッセージの処理に失敗: {e.Message}\n{e.StackTrace}");
-        }
-    }
-
-    private async void SendUnityInit()
-    {
-        try
-        {
-            string initMessage = "UNITY_INIT: Ready for Gyro Data";
-            await _websocket.SendText(initMessage);
-            Debug.Log("Unityクライアントとしてサーバーに登録しました");
-        }
-        catch (Exception e)
-        {
-            Debug.LogError($"Unity初期化メッセージの送信に失敗: {e.Message}");
+            // 滑らかにするためLerpで補間
+            targetObject.transform.rotation = Quaternion.Lerp(
+                targetObject.transform.rotation,
+                targetRotation,
+                Time.deltaTime * rotationSpeed
+            );
         }
     }
 
     void Update()
     {
-        #if !UNITY_WEBGL || UNITY_EDITOR
-            if (_websocket != null)
-            {
-                _websocket.DispatchMessageQueue();
-            }
-        #endif
-
         // ジャイロデータを使用してUnityの入力として処理
         if (useGyroAsInput && _hasGyroData)
         {
-            ProcessGyroInput(_latestGyroData);
+            ProcessGyroData(_latestGyroData);
         }
     }
 
-    private void ProcessGyroInput(GyroData gyroData)
+    void OnDestroy()
     {
-        // ジャイロデータをUnityの入力として処理
-        // この部分は、実際のゲームの要件に応じて実装してください
-        // 例: オブジェクトの回転、移動など
-        
-        // 例: Transformを回転させる
-        // transform.Rotate(new Vector3(gyroData.beta, gyroData.alpha, gyroData.gamma) * Time.deltaTime);
-    }
-
-    public async Task Disconnect()
-    {
-        if (_websocket != null && _isConnected)
+        // Firebase SDKを使用する場合のクリーンアップ（コメントアウト）
+        /*
+        if (databaseReference != null)
         {
-            await _websocket.Close();
-            _websocket = null;
-            _isConnected = false;
-            _hasGyroData = false;
+            DatabaseReference gyroRef = databaseReference.Child(databasePath);
+            gyroRef.ValueChanged -= HandleValueChanged;
         }
+        */
     }
 
-    async void OnDestroy()
+    // デモ用: Firebase SDKが導入されるまでのモックデータ（実際のFirebase SDK導入後は削除）
+    private IEnumerator MockGyroData()
     {
-        await Disconnect();
-    }
+        while (true)
+        {
+            yield return new WaitForSeconds(0.1f);
+            
+            // モックデータを生成
+            _latestGyroData = new GyroData
+            {
+                alpha = Mathf.Sin(Time.time) * 180f,
+                beta = Mathf.Cos(Time.time) * 90f,
+                gamma = Mathf.Sin(Time.time * 0.5f) * 45f,
+                timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+            };
+            
+            _hasGyroData = true;
 
-    async void OnApplicationQuit()
-    {
-        await Disconnect();
+            if (logGyroValues)
+            {
+                Debug.Log($"モックジャイロデータ => Alpha: {_latestGyroData.alpha:F2}, Beta: {_latestGyroData.beta:F2}, Gamma: {_latestGyroData.gamma:F2}");
+            }
+
+            OnGyroDataReceived?.Invoke(_latestGyroData);
+        }
     }
 
     // デバッグ用: サーバーの状態を表示
@@ -203,11 +254,17 @@ public class Test : MonoBehaviour
         style.wordWrap = true;
 
         int yPos = 10;
-        GUI.Label(new Rect(10, yPos, 800, 30), $"WebSocket接続: {(_isConnected ? "接続済み ✅" : "未接続 ❌")}", style);
+        GUI.Label(new Rect(10, yPos, 800, 30), $"Firebase接続: {(_isFirebaseInitialized ? "接続済み ✅" : "未接続 ❌")}", style);
         yPos += 35;
         
-        GUI.Label(new Rect(10, yPos, 800, 30), $"サーバーURL: {serverUrl}", style);
+        GUI.Label(new Rect(10, yPos, 800, 30), $"データベースパス: {databasePath}", style);
         yPos += 35;
+        
+        if (!_isFirebaseInitialized)
+        {
+            GUI.Label(new Rect(10, yPos, 800, 60), $"⚠️ Firebase SDKが必要です。README.mdを参照してください。", style);
+            yPos += 65;
+        }
         
         if (_hasGyroData)
         {
@@ -219,3 +276,4 @@ public class Test : MonoBehaviour
         }
     }
 }
+
