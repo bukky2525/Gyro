@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unity WebSocket コントローラー</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            max-width: 500px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+            text-align: center;
+            font-size: 24px;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        button {
+            flex: 1;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            color: white;
+        }
+
+        .btn-connect {
+            background: #4CAF50;
+        }
+
+        .btn-connect:hover {
+            background: #45a049;
+        }
+
+        .btn-connect:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .btn-disconnect {
+            background: #f44336;
+        }
+
+        .btn-disconnect:hover {
+            background: #da190b;
+        }
+
+        .btn-disconnect:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .status {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status.connecting {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .dpad-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-rows: 1fr 1fr 1fr;
+            gap: 10px;
+            max-width: 300px;
+            margin: 30px auto;
+            aspect-ratio: 1;
+        }
+
+        .dpad-button {
+            border: none;
+            border-radius: 12px;
+            font-size: 32px;
+            font-weight: bold;
+            cursor: pointer;
+            user-select: none;
+            touch-action: manipulation;
+            transition: all 0.1s;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            background: #667eea;
+            color: white;
+        }
+
+        .dpad-button:active {
+            transform: scale(0.95);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .dpad-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .dpad-button.up {
+            grid-column: 2;
+            grid-row: 1;
+        }
+
+        .dpad-button.down {
+            grid-column: 2;
+            grid-row: 3;
+        }
+
+        .dpad-button.left {
+            grid-column: 1;
+            grid-row: 2;
+        }
+
+        .dpad-button.right {
+            grid-column: 3;
+            grid-row: 2;
+        }
+
+        .dpad-button.center {
+            grid-column: 2;
+            grid-row: 2;
+            font-size: 24px;
+            background: #9e9e9e;
+        }
+
+        .log {
+            background: #f5f5f5;
+            border-radius: 8px;
+            padding: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            margin-top: 20px;
+        }
+
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 8px;
+            border-radius: 4px;
+            background: white;
+        }
+
+        .log-entry.send {
+            border-left: 3px solid #2196F3;
+        }
+
+        .log-entry.receive {
+            border-left: 3px solid #4CAF50;
+        }
+
+        .log-entry.error {
+            border-left: 3px solid #f44336;
+            color: #f44336;
+        }
+
+        .log-entry.info {
+            border-left: 3px solid #FF9800;
+        }
+
+        .timestamp {
+            color: #999;
+            font-size: 10px;
+        }
+
+        .instructions {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .instructions h3 {
+            margin-bottom: 10px;
+            color: #1976d2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 Unity WebSocket コントローラー</h1>
+        
+        <div class="instructions">
+            <h3>使い方</h3>
+            <ol style="text-align: left; padding-left: 20px;">
+                <li>Unity側でWebSocketサーバーを起動してください</li>
+                <li>WebSocket URLを入力してください（例: ws://localhost:8080）</li>
+                <li>「接続」ボタンをクリック</li>
+                <li>十字ボタンで操作してください</li>
+            </ol>
+        </div>
+
+        <div class="input-group">
+            <label for="websocketUrl">WebSocket URL</label>
+            <input type="text" id="websocketUrl" placeholder="ws://localhost:8080 または ws://192.168.x.x:8080" value="ws://localhost:8080">
+        </div>
+
+        <div class="button-group">
+            <button class="btn-connect" id="connectBtn" onclick="connect()">接続</button>
+            <button class="btn-disconnect" id="disconnectBtn" onclick="disconnect()" disabled>切断</button>
+        </div>
+
+        <div class="status disconnected" id="status">未接続</div>
+
+        <div class="dpad-container">
+            <button class="dpad-button up" data-direction="up" onclick="sendDirection('up')" disabled>↑</button>
+            <button class="dpad-button left" data-direction="left" onclick="sendDirection('left')" disabled>←</button>
+            <button class="dpad-button center" onclick="sendDirection('stop')" disabled>●</button>
+            <button class="dpad-button right" data-direction="right" onclick="sendDirection('right')" disabled>→</button>
+            <button class="dpad-button down" data-direction="down" onclick="sendDirection('down')" disabled>↓</button>
+        </div>
+
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        let ws = null;
+        let isConnected = false;
+
+        const websocketUrlInput = document.getElementById('websocketUrl');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const statusDiv = document.getElementById('status');
+        const logDiv = document.getElementById('log');
+        const dpadButtons = document.querySelectorAll('.dpad-button');
+
+        function addLog(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            const timestamp = new Date().toLocaleTimeString();
+            entry.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function updateStatus(status, text) {
+            statusDiv.className = `status ${status}`;
+            statusDiv.textContent = text;
+        }
+
+        function updateButtons() {
+            connectBtn.disabled = isConnected;
+            disconnectBtn.disabled = !isConnected;
+            dpadButtons.forEach(btn => {
+                btn.disabled = !isConnected;
+            });
+        }
+
+        function connect() {
+            const url = websocketUrlInput.value.trim();
+            if (!url) {
+                addLog('WebSocket URLを入力してください', 'error');
+                updateStatus('disconnected', 'URLを入力してください');
+                return;
+            }
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                addLog('既に接続されています', 'info');
+                return;
+            }
+
+            try {
+                addLog(`接続を試みます: ${url}`, 'info');
+                updateStatus('connecting', '接続中...');
+                
+                ws = new WebSocket(url);
+
+                ws.onopen = () => {
+                    isConnected = true;
+                    updateStatus('connected', '接続済み');
+                    addLog('WebSocket接続が確立されました', 'info');
+                    updateButtons();
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        addLog(`受信: ${JSON.stringify(data)}`, 'receive');
+                    } catch (e) {
+                        addLog(`受信: ${event.data}`, 'receive');
+                    }
+                };
+
+                ws.onerror = (error) => {
+                    addLog(`エラー: WebSocketエラーが発生しました`, 'error');
+                    updateStatus('disconnected', 'エラー');
+                };
+
+                ws.onclose = (event) => {
+                    isConnected = false;
+                    updateStatus('disconnected', '切断済み');
+                    addLog(`接続が閉じられました (コード: ${event.code}, 理由: ${event.reason || 'なし'})`, 'info');
+                    updateButtons();
+                    ws = null;
+                };
+
+            } catch (error) {
+                addLog(`接続エラー: ${error.message}`, 'error');
+                updateStatus('disconnected', 'エラー');
+                updateButtons();
+            }
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                addLog('切断を要求しました', 'info');
+            }
+        }
+
+        function sendDirection(direction) {
+            if (!isConnected || !ws || ws.readyState !== WebSocket.OPEN) {
+                addLog('接続されていません', 'error');
+                return;
+            }
+
+            const directionData = {
+                Direction: direction,
+                Timestamp: new Date().toISOString()
+            };
+
+            try {
+                const json = JSON.stringify(directionData);
+                ws.send(json);
+                addLog(`送信: ${direction}`, 'send');
+            } catch (error) {
+                addLog(`送信エラー: ${error.message}`, 'error');
+            }
+        }
+
+        // キーボードショートカット
+        document.addEventListener('keydown', (event) => {
+            if (!isConnected) return;
+
+            switch(event.key) {
+                case 'ArrowUp':
+                case 'w':
+                case 'W':
+                    event.preventDefault();
+                    sendDirection('up');
+                    break;
+                case 'ArrowDown':
+                case 's':
+                case 'S':
+                    event.preventDefault();
+                    sendDirection('down');
+                    break;
+                case 'ArrowLeft':
+                case 'a':
+                case 'A':
+                    event.preventDefault();
+                    sendDirection('left');
+                    break;
+                case 'ArrowRight':
+                case 'd':
+                case 'D':
+                    event.preventDefault();
+                    sendDirection('right');
+                    break;
+                case ' ':
+                    event.preventDefault();
+                    sendDirection('stop');
+                    break;
+            }
+        });
+
+        // 初期状態の設定
+        updateButtons();
+        addLog('WebSocketコントローラーが準備できました', 'info');
+    </script>
+</body>
+</html>
+
