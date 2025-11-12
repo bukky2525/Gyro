@@ -1,8 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
-    <title>ジャイロ センサー送信</title>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ジャイロ センサー送信</title>
     <style>
         body { 
             font-family: sans-serif; 
@@ -212,8 +213,20 @@
             color: #666;
             font-size: 0.9em;
         }
+        .websocket-url-input {
+            width: 100%;
+            max-width: 400px;
+            padding: 10px;
+            margin: 10px auto;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 1em;
+        }
+        .websocket-url-input:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
     </style>
-    
 </head>
 <body>
     <!-- ハンバーガーメニュー -->
@@ -230,9 +243,17 @@
 
     <h1>ジャイロ センサー</h1>
     <p id="status">まず「ジャイロを有効化」ボタンを押してジャイロセンサーの許可を与えてください。</p>
+    
+    <!-- WebSocket URL設定 -->
+    <div style="margin: 20px 0;">
+        <label for="websocketUrl" style="display: block; margin-bottom: 5px; font-weight: bold;">WebSocket URL:</label>
+        <input type="text" id="websocketUrl" class="websocket-url-input" placeholder="ws://localhost:8080 または wss://example.com" value="ws://localhost:8080">
+    </div>
+    
     <button id="enableGyroBtn">ジャイロを有効化</button>
-    <button id="connectBtn" disabled>AppSyncに接続</button>
-    <p style="font-size: 0.9em; color: #666; margin-top: 10px;">※ ジャイロを無効化すると、AppSyncとの接続も自動的に切断されます。</p>
+    <button id="connectBtn" disabled>WebSocketに接続</button>
+    <p style="font-size: 0.9em; color: #666; margin-top: 10px;">※ ジャイロを無効化すると、WebSocketとの接続も自動的に切断されます。</p>
+    
     <!-- ジャイロモード表示 -->
     <div id="gyroData" class="gyro-mode">
         <div id="data">
@@ -272,23 +293,8 @@
 
     <script>
         // -----------------------------------------------------------------
-        // AWS AppSync Events API 設定情報（Unityと同じ値に合わせてください）
+        // WebSocket設定
         // -----------------------------------------------------------------
-        // AppSyncコンソール → 作成したEvents API → 「設定」タブから以下を取得:
-        // 1. DNSエンドポイント - HTTP（例: xxxxxxxxxxxx.appsync-api.ap-northeast-1.amazonaws.com）
-        // 2. DNSエンドポイント - リアルタイム（例: xxxxxxxxxxxx.appsync-realtime-api.ap-northeast-1.amazonaws.com）
-        // 3. APIキー（例: da2-xxxxxxxxxxxxxxxxxxxxx）
-        // 4. リージョン（例: ap-northeast-1）
-        
-        const APP_SYNC_API_ID = "k5fxcxsvbbathdhik52l5hegrq"; // API ID（DNSエンドポイントから取得）
-        const APP_SYNC_REGION = "ap-northeast-1"; // リージョン
-        const APP_SYNC_EVENTS_URL = `https://${APP_SYNC_API_ID}.appsync-api.${APP_SYNC_REGION}.amazonaws.com/event`;
-        const API_KEY = "da2-jhqtdoi3qjdrph6atduxm254wq"; // APIキー
-        const NAMESPACE = "default"; // 名前空間（デフォルトは"default"）
-        const CHANNEL_NAME = "gyro"; // チャンネル名
-        const SUBSCRIPTION_CHANNEL_NAME = `${NAMESPACE}/${CHANNEL_NAME}`; // 完全なチャンネル名（例: "default/gyro"）
-        // -----------------------------------------------------------------
-
         const statusEl = document.getElementById("status");
         const alphaEl = document.getElementById("alpha");
         const betaEl = document.getElementById("beta");
@@ -304,7 +310,9 @@
         const gyroDataEl = document.getElementById("gyroData");
         const dpadContainer = document.getElementById("dpadContainer");
         const dpadButtons = document.querySelectorAll(".dpad-button");
+        const websocketUrlInput = document.getElementById("websocketUrl");
         
+        let ws = null;
         let isConnected = false;
         let gyroListener = null;
         let motionListener = null;
@@ -339,10 +347,8 @@
         // ジャイロを有効化/無効化する関数（トグル）
         function toggleGyroSensor() {
             if (gyroEnabled) {
-                // ジャイロを無効化
                 disableGyroSensor();
             } else {
-                // ジャイロを有効化
                 enableGyroSensor();
             }
         }
@@ -353,9 +359,7 @@
                 return;
             }
 
-            // DeviceOrientationEventのサポート確認
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                // iOS 13+ の場合、明示的な許可が必要
                 DeviceOrientationEvent.requestPermission()
                     .then(response => {
                         dlog(`DeviceOrientation permission response: ${response}`);
@@ -374,13 +378,11 @@
                         statusEl.innerText = `ジャイロセンサーの許可エラー: ${error.message}`;
                         console.error("ジャイロセンサーの許可エラー:", error);
                         dlog(`Permission request error: ${error?.message || error}`);
-                        // 許可APIが使えない場合、通常の方法を試す
                         startGyroListeners();
                         updateGyroButtonState(true);
                         connectBtn.disabled = false;
                     });
             } else {
-                // 通常のブラウザ（許可APIなし）
                 startGyroListeners();
                 statusEl.innerText = "ジャイロセンサーを有効化しました。データを取得しています。";
                 updateGyroButtonState(true);
@@ -395,7 +397,6 @@
                 return;
             }
 
-            // リスナーを削除
             if (gyroListener) {
                 window.removeEventListener("deviceorientation", gyroListener, true);
                 gyroListener = null;
@@ -410,12 +411,10 @@
             dataReceived = false;
             gyroEventCount = 0;
             
-            // 表示をリセット
             updateGyroDisplay(null, null, null);
             
-            // 接続している場合は切断
             if (isConnected) {
-                disconnectFromAppSync();
+                disconnectFromWebSocket();
             }
             
             statusEl.innerText = "ジャイロセンサーを無効化しました。";
@@ -439,38 +438,32 @@
         function startGyroListeners() {
             if (gyroEnabled) return;
 
-            // DeviceOrientationEvent（デバイスの向き）
             gyroListener = (event) => {
                 const alpha = event.alpha;
                 const beta = event.beta;
                 const gamma = event.gamma;
 
-                // データが取得できたかチェック
                 if (alpha !== null && beta !== null && gamma !== null) {
                     dataReceived = true;
                     gyroEventCount++;
                     
-                    // 数値で表示
                     updateGyroDisplay(alpha, beta, gamma);
                     if (gyroEventCount % 10 === 1) {
                         dlog(`DeviceOrientation: alpha=${alpha?.toFixed?.(2)}, beta=${beta?.toFixed?.(2)}, gamma=${gamma?.toFixed?.(2)} (events=${gyroEventCount})`);
                     }
 
-                    // 接続している場合のみAppSyncにデータを送信
-                    if (isConnected) {
+                    if (isConnected && ws && ws.readyState === WebSocket.OPEN) {
                         const now = Date.now();
                         if (now - lastSendTs >= SEND_INTERVAL_MS) {
                             lastSendTs = now;
-                            publishToAppSync(alpha, beta, gamma);
+                            sendGyroData(alpha, beta, gamma);
                         }
                     }
                 }
             };
 
-            // DeviceMotionEvent（デバイスの動き）- より正確なデータ
             motionListener = (event) => {
                 if (event.rotationRate) {
-                    // ジャイロデータが利用可能な場合
                     const alpha = event.rotationRate.alpha;
                     const beta = event.rotationRate.beta;
                     const gamma = event.rotationRate.gamma;
@@ -492,7 +485,6 @@
             gyroEnabled = true;
             dlog("Gyro listeners started.");
 
-            // データが取得できない場合のタイムアウト
             setTimeout(() => {
                 if (!dataReceived && gyroEnabled) {
                     statusEl.innerText = "ジャイロデータが取得できていません。デバイスを傾けてみてください。または、ブラウザの設定でセンサーへのアクセスを許可してください。";
@@ -504,9 +496,7 @@
         // ジャイロデータの表示（接続前から開始）
         function setupGyroDisplay() {
             if (window.DeviceOrientationEvent || window.DeviceMotionEvent) {
-                // ジャイロ有効化/無効化ボタンのイベントリスナー
                 enableGyroBtn.addEventListener("click", toggleGyroSensor);
-                
                 statusEl.innerText = "「ジャイロを有効化」ボタンを押してジャイロセンサーの許可を与えてください。";
             } else {
                 statusEl.innerText = "このデバイスはジャイロをサポートしていません";
@@ -517,54 +507,87 @@
             }
         }
 
-        // 接続ボタンのイベントリスナー
-        connectBtn.addEventListener("click", () => {
-            if (isConnected) {
-                // 切断処理
-                disconnectFromAppSync();
-            } else {
-                // 接続処理（AppSyncは接続不要、すぐに使用可能）
-                connectToAppSync();
+        // WebSocketに接続
+        function connectToWebSocket() {
+            const url = websocketUrlInput.value.trim();
+            if (!url) {
+                statusEl.innerText = "WebSocket URLを入力してください。";
+                dlog("WebSocket URL is empty");
+                return;
             }
-        });
-        // ダミー送信
-        sendDummyBtn.addEventListener("click", () => {
-            if (!isConnected) {
-                dlog("Not connected flag yet. Enabling connect flag.");
-                connectToAppSync();
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                dlog("Already connected to WebSocket");
+                return;
             }
-            dlog("Sending dummy payload to AppSync...");
-            publishToAppSync(123.45, 67.89, 10.11);
-        });
 
-        // AppSyncに接続する関数（実際には接続不要、すぐに使用可能）
-        function connectToAppSync() {
-            isConnected = true;
-            statusEl.innerText = "接続成功！ データを送信中...";
-            connectBtn.textContent = "切断";
-            connectBtn.classList.add("connected");
-            console.log("AppSync Events APIに接続しました（APIキー認証のため接続不要）");
-            const endpoint = `${APP_SYNC_EVENTS_URL}/${SUBSCRIPTION_CHANNEL_NAME}`;
-            dlog(`Connect flag set. Events API Endpoint=${endpoint}`);
-            dlog(`[DEBUG] APP_SYNC_EVENTS_URL=${APP_SYNC_EVENTS_URL}`);
-            dlog(`[DEBUG] SUBSCRIPTION_CHANNEL_NAME=${SUBSCRIPTION_CHANNEL_NAME}`);
-        }
-
-        // AppSyncから切断する関数
-        function disconnectFromAppSync() {
-            isConnected = false;
-            statusEl.innerText = "切断しました。接続ボタンを押して再接続できます。";
-            connectBtn.textContent = "AppSyncに接続";
-            connectBtn.classList.remove("connected");
-            console.log("AppSyncから切断しました");
-            dlog("Connect flag cleared.");
-        }
-
-        // AppSync Events APIにジャイロデータを発行する関数
-        async function publishToAppSync(alpha, beta, gamma) {
             try {
-                // Events APIのHTTPエンドポイントにPOSTリクエストを送信
-                const url = `${APP_SYNC_EVENTS_URL}/${SUBSCRIPTION_CHANNEL_NAME}`;
+                dlog(`Connecting to WebSocket: ${url}`);
+                statusEl.innerText = "WebSocketに接続中...";
+                
+                ws = new WebSocket(url);
+
+                ws.onopen = () => {
+                    isConnected = true;
+                    statusEl.innerText = "接続成功！ データを送信中...";
+                    connectBtn.textContent = "切断";
+                    connectBtn.classList.add("connected");
+                    dlog("WebSocket connection opened");
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        dlog(`Received: ${JSON.stringify(data)}`);
+                        
+                        // 方向データの処理
+                        if (data.Direction) {
+                            dlog(`Direction data received: ${data.Direction} (timestamp: ${data.Timestamp || 'none'})`);
+                        }
+                    } catch (e) {
+                        dlog(`Received (non-JSON): ${event.data}`);
+                    }
+                };
+
+                ws.onerror = (error) => {
+                    dlog(`WebSocket error: ${error.message || 'Unknown error'}`);
+                    statusEl.innerText = "WebSocketエラーが発生しました。";
+                };
+
+                ws.onclose = (event) => {
+                    isConnected = false;
+                    statusEl.innerText = "切断しました。接続ボタンを押して再接続できます。";
+                    connectBtn.textContent = "WebSocketに接続";
+                    connectBtn.classList.remove("connected");
+                    dlog(`WebSocket connection closed (code: ${event.code}, reason: ${event.reason || 'none'})`);
+                    ws = null;
+                };
+
+            } catch (error) {
+                dlog(`WebSocket connection error: ${error.message}`);
+                statusEl.innerText = `接続エラー: ${error.message}`;
+            }
+        }
+
+        // WebSocketから切断
+        function disconnectFromWebSocket() {
+            if (ws) {
+                ws.close();
+                isConnected = false;
+                statusEl.innerText = "切断しました。";
+                connectBtn.textContent = "WebSocketに接続";
+                connectBtn.classList.remove("connected");
+                dlog("WebSocket connection closed by user");
+            }
+        }
+
+        // ジャイロデータを送信
+        function sendGyroData(alpha, beta, gamma) {
+            if (!isConnected || !ws || ws.readyState !== WebSocket.OPEN) {
+                return;
+            }
+
+            try {
                 const payload = {
                     type: "gyro",
                     alpha: alpha,
@@ -573,34 +596,79 @@
                     timestamp: new Date().toISOString()
                 };
 
-                // デバッグ: 送信URLとペイロードをログに出力
-                dlog(`[DEBUG] Sending to URL: ${url}`);
-                dlog(`[DEBUG] Payload: ${JSON.stringify(payload)}`);
-
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'x-api-key': API_KEY
-                    },
-                    body: JSON.stringify(payload)
-                });
-
-                const text = await response.text();
-                dlog(`Gyro Publish HTTP status=${response.status} ${response.statusText}`);
-                if (!response.ok) {
-                    dlog(`Gyro Publish raw response: ${text}`);
-                    throw new Error(`HTTP ${response.status} ${response.statusText}`);
+                const json = JSON.stringify(payload);
+                ws.send(json);
+                if (gyroEventCount % 10 === 1) {
+                    dlog(`Gyro data sent: alpha=${alpha.toFixed(2)}, beta=${beta.toFixed(2)}, gamma=${gamma.toFixed(2)}`);
                 }
-
-                console.log("ジャイロデータを発行しました:", payload);
-                dlog(`Gyro data published: alpha=${alpha.toFixed(2)}, beta=${beta.toFixed(2)}, gamma=${gamma.toFixed(2)}`);
-
             } catch (error) {
-                console.error("AppSync Events API Publish Error:", error);
-                dlog(`Publish error: ${error?.message || error}`);
+                dlog(`Error sending gyro data: ${error.message}`);
             }
         }
+
+        // 方向データを送信
+        function sendDirection(direction) {
+            if (!isConnected || !ws || ws.readyState !== WebSocket.OPEN) {
+                if (!ws || ws.readyState !== WebSocket.CONNECTING) {
+                    connectToWebSocket();
+                }
+                // 接続を待つ
+                setTimeout(() => {
+                    if (isConnected && ws && ws.readyState === WebSocket.OPEN) {
+                        sendDirectionData(direction);
+                    } else {
+                        dlog("Failed to connect, cannot send direction");
+                    }
+                }, 500);
+                return;
+            }
+            sendDirectionData(direction);
+        }
+
+        // 方向データを送信（内部関数）
+        function sendDirectionData(direction) {
+            if (!isConnected || !ws || ws.readyState !== WebSocket.OPEN) {
+                dlog("Not connected, cannot send direction");
+                return;
+            }
+
+            try {
+                const payload = {
+                    Direction: direction,
+                    Timestamp: new Date().toISOString()
+                };
+
+                const json = JSON.stringify(payload);
+                ws.send(json);
+                dlog(`Direction sent: ${direction}`);
+            } catch (error) {
+                dlog(`Error sending direction: ${error.message}`);
+            }
+        }
+
+        // 接続ボタンのイベントリスナー
+        connectBtn.addEventListener("click", () => {
+            if (isConnected) {
+                disconnectFromWebSocket();
+            } else {
+                connectToWebSocket();
+            }
+        });
+
+        // ダミー送信
+        sendDummyBtn.addEventListener("click", () => {
+            if (!isConnected) {
+                connectToWebSocket();
+            }
+            setTimeout(() => {
+                if (isConnected && ws && ws.readyState === WebSocket.OPEN) {
+                    sendGyroData(123.45, 67.89, 10.11);
+                    dlog("Dummy gyro data sent");
+                } else {
+                    dlog("Failed to connect, cannot send dummy data");
+                }
+            }, 500);
+        });
 
         // ハンバーガーメニューのトグル
         hamburger.addEventListener("click", () => {
@@ -656,7 +724,6 @@
                 sendDirection(direction);
             });
             
-            // タッチデバイス対応
             button.addEventListener("touchstart", (e) => {
                 e.preventDefault();
                 const direction = button.getAttribute("data-direction");
@@ -664,58 +731,10 @@
             });
         });
 
-        // 方向データを送信
-        function sendDirection(direction) {
-            if (!isConnected) {
-                connectToAppSync();
-            }
-            dlog(`Sending direction: ${direction}`);
-            publishDirectionToAppSync(direction);
-        }
-
-        // AppSync Events APIに方向データを送信
-        async function publishDirectionToAppSync(direction) {
-            try {
-                // Events APIのHTTPエンドポイントにPOSTリクエストを送信
-                const url = `${APP_SYNC_EVENTS_URL}/${SUBSCRIPTION_CHANNEL_NAME}`;
-                const payload = {
-                    type: "direction",
-                    direction: direction,
-                    timestamp: new Date().toISOString()
-                };
-
-                // デバッグ: 送信URLとペイロードをログに出力
-                dlog(`[DEBUG] Sending direction to URL: ${url}`);
-                dlog(`[DEBUG] Payload: ${JSON.stringify(payload)}`);
-
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'x-api-key': API_KEY
-                    },
-                    body: JSON.stringify(payload)
-                });
-
-                const text = await response.text();
-                dlog(`Direction Publish HTTP status=${response.status} ${response.statusText}`);
-                if (!response.ok) {
-                    dlog(`Direction Publish raw response: ${text}`);
-                    throw new Error(`HTTP ${response.status} ${response.statusText}`);
-                }
-
-                console.log("方向データを発行しました:", payload);
-                dlog(`Direction published: ${direction}`);
-
-            } catch (error) {
-                console.error("AppSync Events API Publish Error:", error);
-                dlog(`Publish error: ${error?.message || error}`);
-            }
-        }
-
         // ページ読み込み時にジャイロ表示を開始
         setupGyroDisplay();
         setMode("gyro"); // デフォルトはジャイロモード
+        dlog("WebSocket client initialized");
     </script>
 </body>
 </html>
