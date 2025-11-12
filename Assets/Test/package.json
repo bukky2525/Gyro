@@ -1,0 +1,23 @@
+{
+  "name": "websocket-gyro-relay-server",
+  "version": "1.0.0",
+  "description": "WebSocket中継サーバー - Unityとスマートフォン間でジャイロデータを中継",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "websocket",
+    "gyro",
+    "unity",
+    "relay",
+    "server"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.14.2"
+  }
+}
+
