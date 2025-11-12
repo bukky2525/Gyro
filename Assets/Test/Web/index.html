@@ -237,7 +237,7 @@
             background-color: #f57c00;
         }
 
-        /* 十字ボタンモード */
+        /* スティックモード */
         #dpadMode {
             display: none;
         }
@@ -246,69 +246,43 @@
             display: block;
         }
 
-        .dpad-container {
+        .stick-container {
             display: flex;
             justify-content: center;
             align-items: center;
             margin: 40px 0;
             position: relative;
+        }
+
+        .stick-base {
             width: 200px;
             height: 200px;
-            margin-left: auto;
-            margin-right: auto;
-        }
-
-        .dpad-button {
-            position: absolute;
-            width: 60px;
-            height: 60px;
-            background: rgba(33, 150, 243, 0.8);
-            border: 3px solid #1976D2;
-            border-radius: 12px;
-            cursor: pointer;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 24px;
-            font-weight: bold;
-            color: white;
-            transition: all 0.1s;
+            border-radius: 50%;
+            background: rgba(33, 150, 243, 0.2);
+            border: 3px solid rgba(33, 150, 243, 0.5);
+            position: relative;
             touch-action: none;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
         }
 
-        .dpad-button:active {
+        .stick-knob {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            background: rgba(33, 150, 243, 0.9);
+            border: 3px solid #1976D2;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            transition: transform 0.1s ease-out;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+            cursor: grab;
+        }
+
+        .stick-knob:active {
+            cursor: grabbing;
             background: rgba(25, 118, 210, 1);
-            transform: scale(0.95);
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-        }
-
-        .dpad-up {
-            top: 0;
-            left: 50%;
-            transform: translateX(-50%);
-        }
-
-        .dpad-down {
-            bottom: 0;
-            left: 50%;
-            transform: translateX(-50%);
-        }
-
-        .dpad-left {
-            left: 0;
-            top: 50%;
-            transform: translateY(-50%);
-        }
-
-        .dpad-right {
-            right: 0;
-            top: 50%;
-            transform: translateY(-50%);
-        }
-
-        .dpad-button span {
-            pointer-events: none;
         }
 
         .instructions {
@@ -340,7 +314,7 @@
         <div class="mode-selector">
             <h3>コントロールモード</h3>
             <button class="mode-btn active" id="gyroModeBtn">ジャイロモード</button>
-            <button class="mode-btn" id="dpadModeBtn">十字ボタン</button>
+            <button class="mode-btn" id="dpadModeBtn">スティック</button>
         </div>
     </div>
 
@@ -379,27 +353,24 @@
                 </div>
             </div>
 
-            <!-- 十字ボタンモード -->
+            <!-- スティックモード -->
             <div id="dpadMode">
                 <div class="instructions">
-                    <h3>十字ボタンモード</h3>
-                    <p>ボタンをタップまたは長押しして移動します</p>
+                    <h3>スティックモード</h3>
+                    <p>スティックをドラッグして移動します</p>
+                    <ul style="text-align: left; padding-left: 20px; margin-top: 10px;">
+                        <li>上にドラッグ → 前進</li>
+                        <li>下にドラッグ → 後退</li>
+                        <li>左にドラッグ → 左移動</li>
+                        <li>右にドラッグ → 右移動</li>
+                    </ul>
                 </div>
 
-                <p id="statusDpad" class="status connected">十字ボタンで操作できます</p>
+                <p id="statusDpad" class="status connected">スティックで操作できます</p>
                 
-                <div class="dpad-container">
-                    <div class="dpad-button dpad-up" id="btnUp" data-direction="up">
-                        <span>↑</span>
-                    </div>
-                    <div class="dpad-button dpad-left" id="btnLeft" data-direction="left">
-                        <span>←</span>
-                    </div>
-                    <div class="dpad-button dpad-right" id="btnRight" data-direction="right">
-                        <span>→</span>
-                    </div>
-                    <div class="dpad-button dpad-down" id="btnDown" data-direction="down">
-                        <span>↓</span>
+                <div class="stick-container">
+                    <div class="stick-base" id="stickBase">
+                        <div class="stick-knob" id="stickKnob"></div>
                     </div>
                 </div>
             </div>
@@ -444,16 +415,13 @@
         let lastSendTime = 0;
         const SEND_INTERVAL = 100; // 10 FPS (100ms) - データベース負荷を軽減
 
-        // 移動方向の状態（十字ボタン用）
-        let moveX = 0; // -1: 左, 0: なし, 1: 右
-        let moveZ = 0; // -1: 後ろ, 0: なし, 1: 前
+        // 移動方向の状態（スティック用）
+        let moveX = 0; // -1.0 ～ 1.0: 左から右
+        let moveZ = 0; // -1.0 ～ 1.0: 後ろから前
         
         // 前回送信した値を保持（値が変更されたときだけ送信）
         let lastSentX = null;
         let lastSentZ = null;
-        
-        // 定期的な送信のタイマーID
-        let dpadIntervalId = null;
 
         // ハンバーガーメニューのトグル
         hamburgerMenu.addEventListener('click', () => {
@@ -643,99 +611,96 @@
             }
         });
 
-        // 十字ボタン
-        const dpadButtons = {
-            up: document.getElementById('btnUp'),
-            down: document.getElementById('btnDown'),
-            left: document.getElementById('btnLeft'),
-            right: document.getElementById('btnRight')
-        };
+        // スティック
+        const stickBase = document.getElementById('stickBase');
+        const stickKnob = document.getElementById('stickKnob');
+        let isStickActive = false;
+        let stickCenterX = 0;
+        let stickCenterY = 0;
+        let stickRadius = 0;
 
-        // タッチイベントとマウスイベントの処理
-        function setupDpadButton(button, direction) {
-            const setActive = (e) => {
-                e.preventDefault();
-                button.classList.add('active');
-                updateMovement(direction, true);
-            };
-
-            const setInactive = (e) => {
-                e.preventDefault();
-                button.classList.remove('active');
-                updateMovement(direction, false);
-            };
-
-            // タッチイベント
-            button.addEventListener('touchstart', setActive, { passive: false });
-            button.addEventListener('touchend', setInactive, { passive: false });
-            button.addEventListener('touchcancel', setInactive, { passive: false });
-
-            // マウスイベント
-            button.addEventListener('mousedown', setActive);
-            button.addEventListener('mouseup', setInactive);
-            button.addEventListener('mouseleave', setInactive);
+        // スティックの初期化
+        function initStick() {
+            const rect = stickBase.getBoundingClientRect();
+            stickCenterX = rect.left + rect.width / 2;
+            stickCenterY = rect.top + rect.height / 2;
+            stickRadius = rect.width / 2 - 35; // ノブの半径を考慮
         }
 
-        function updateMovement(direction, isActive) {
-            switch (direction) {
-                case 'up':
-                    moveZ = isActive ? 1 : 0;
-                    break;
-                case 'down':
-                    moveZ = isActive ? -1 : 0;
-                    break;
-                case 'left':
-                    moveX = isActive ? -1 : 0;
-                    break;
-                case 'right':
-                    moveX = isActive ? 1 : 0;
-                    break;
-            }
-
-            // 他のボタンが押されている場合はその方向を維持
-            if (!isActive) {
-                // 同じ方向の他のボタンをチェック
-                if (direction === 'up' && dpadButtons.down.classList.contains('active')) {
-                    moveZ = -1;
-                } else if (direction === 'down' && dpadButtons.up.classList.contains('active')) {
-                    moveZ = 1;
-                } else if (direction === 'left' && dpadButtons.right.classList.contains('active')) {
-                    moveX = 1;
-                } else if (direction === 'right' && dpadButtons.left.classList.contains('active')) {
-                    moveX = -1;
-                }
-            }
-
+        // スティックの位置を更新
+        function updateStickPosition(clientX, clientY) {
+            const dx = clientX - stickCenterX;
+            const dy = clientY - stickCenterY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // スティックの範囲内に制限
+            let limitedDistance = Math.min(distance, stickRadius);
+            const angle = Math.atan2(dy, dx);
+            
+            const limitedX = Math.cos(angle) * limitedDistance;
+            const limitedY = Math.sin(angle) * limitedDistance;
+            
+            // ノブの位置を更新
+            stickKnob.style.transform = `translate(calc(-50% + ${limitedX}px), calc(-50% + ${limitedY}px))`;
+            
+            // 移動方向を計算（-1.0 ～ 1.0の範囲に正規化）
+            moveX = limitedDistance > 0 ? (limitedX / stickRadius) : 0;
+            moveZ = limitedDistance > 0 ? (-limitedY / stickRadius) : 0; // Y軸は反転（上=正=前進）
+            
+            // 値を送信
             sendMovement(moveX, moveZ);
         }
 
-        // 各ボタンをセットアップ
-        setupDpadButton(dpadButtons.up, 'up');
-        setupDpadButton(dpadButtons.down, 'down');
-        setupDpadButton(dpadButtons.left, 'left');
-        setupDpadButton(dpadButtons.right, 'right');
-
-        // 定期的に移動データを送信（十字ボタン用）
-        // ただし、moveX=0かつmoveZ=0のときは送信しない（データベース負荷を軽減）
-        function startDpadInterval() {
-            if (dpadIntervalId !== null) {
-                clearInterval(dpadIntervalId);
-            }
-            dpadIntervalId = setInterval(() => {
-                if (currentMode === 'dpad') {
-                    // 値が0,0でない場合、または前回送信した値と異なる場合のみ送信
-                    if (moveX !== 0 || moveZ !== 0) {
-                        sendMovement(moveX, moveZ);
-                    } else if (lastSentX !== 0 || lastSentZ !== 0) {
-                        // 0,0に戻ったときは一度だけ送信して停止
-                        sendMovement(0, 0);
-                    }
-                }
-            }, SEND_INTERVAL);
+        // スティックをリセット
+        function resetStick() {
+            stickKnob.style.transform = 'translate(-50%, -50%)';
+            moveX = 0;
+            moveZ = 0;
+            sendMovement(0, 0);
         }
+
+        // タッチ/マウスイベントの処理
+        function handleStickStart(e) {
+            e.preventDefault();
+            isStickActive = true;
+            initStick();
+            
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            updateStickPosition(clientX, clientY);
+        }
+
+        function handleStickMove(e) {
+            if (!isStickActive) return;
+            e.preventDefault();
+            
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            updateStickPosition(clientX, clientY);
+        }
+
+        function handleStickEnd(e) {
+            if (!isStickActive) return;
+            e.preventDefault();
+            isStickActive = false;
+            resetStick();
+        }
+
+        // イベントリスナーの設定
+        stickBase.addEventListener('touchstart', handleStickStart, { passive: false });
+        stickBase.addEventListener('touchmove', handleStickMove, { passive: false });
+        stickBase.addEventListener('touchend', handleStickEnd, { passive: false });
+        stickBase.addEventListener('touchcancel', handleStickEnd, { passive: false });
         
-        // 初期化時にタイマーを開始
-        startDpadInterval();
+        stickBase.addEventListener('mousedown', handleStickStart);
+        document.addEventListener('mousemove', handleStickMove);
+        document.addEventListener('mouseup', handleStickEnd);
+
+        // ウィンドウリサイズ時に再初期化
+        window.addEventListener('resize', initStick);
+        
+        // 初期化
+        initStick();
 
         // 初期状態
         if (window.DeviceOrientationEvent || window.DeviceMotionEvent) {
