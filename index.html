@@ -378,6 +378,24 @@
             <button class="mode-btn active" id="gyroModeBtn">ジャイロモード</button>
             <button class="mode-btn" id="dpadModeBtn">スティック</button>
         </div>
+        <div class="mode-selector" style="margin-top: 20px;">
+            <h3>WebSocket接続設定</h3>
+            <label for="serverIpInput" style="display: block; margin-bottom: 5px; font-size: 14px; color: #666;">サーバーIPアドレス:</label>
+            <input type="text" id="serverIpInput" placeholder="例: 192.168.1.100" 
+                   style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 4px; font-size: 14px; margin-bottom: 5px;"
+                   value="localhost">
+            <label for="serverPortInput" style="display: block; margin-bottom: 5px; font-size: 14px; color: #666;">ポート番号:</label>
+            <input type="number" id="serverPortInput" placeholder="8080" 
+                   style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 4px; font-size: 14px; margin-bottom: 10px;"
+                   value="8080">
+            <button id="connectBtn" style="width: 100%; padding: 10px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">
+                接続
+            </button>
+            <p style="font-size: 12px; color: #666; margin-top: 10px;">
+                Unity側のIPアドレスを入力してください。<br>
+                例: 192.168.1.100:8080
+            </p>
+        </div>
     </div>
 
     <!-- メインコンテンツ -->
@@ -479,7 +497,7 @@
         // ローカルネットワークの場合: ws://[Unity PCのIPアドレス]:8080
         // 例: ws://192.168.1.100:8080
         // ローカルホストの場合: ws://localhost:8080
-        const WEBSOCKET_URL = 'ws://localhost:8080'; // WebSocketサーバーのURL（必要に応じて変更）
+        let WEBSOCKET_URL = 'ws://localhost:8080'; // WebSocketサーバーのURL（動的に変更可能）
         let websocket = null;
         let isWebSocketConnected = false;
         let reconnectAttempts = 0;
@@ -487,8 +505,23 @@
         const RECONNECT_DELAY = 3000; // 3秒
         let reconnectTimer = null;
         
+        // WebSocket URLを更新
+        function updateWebSocketUrl() {
+            const ipInput = document.getElementById('serverIpInput');
+            const portInput = document.getElementById('serverPortInput');
+            if (ipInput && portInput) {
+                const ip = ipInput.value.trim() || 'localhost';
+                const port = portInput.value.trim() || '8080';
+                WEBSOCKET_URL = `ws://${ip}:${port}`;
+                console.log(`WebSocket URLを更新しました: ${WEBSOCKET_URL}`);
+            }
+        }
+        
         // WebSocket接続を初期化
         function initWebSocket() {
+            // URLを更新（念のため）
+            updateWebSocketUrl();
+            
             // 既存の接続を閉じる
             if (websocket && websocket.readyState !== WebSocket.CLOSED) {
                 websocket.close();
@@ -577,12 +610,28 @@
             }
         }
         
-        // ページ読み込み時にWebSocket接続を開始
+        // ページ読み込み時にWebSocket接続を開始（自動接続を無効にする場合はコメントアウト）
         window.addEventListener('load', () => {
+            // 接続ボタンのイベントリスナー
+            const connectBtn = document.getElementById('connectBtn');
+            if (connectBtn) {
+                connectBtn.addEventListener('click', () => {
+                    updateWebSocketUrl();
+                    // 既存の接続を閉じる
+                    if (websocket && websocket.readyState !== WebSocket.CLOSED) {
+                        websocket.close();
+                    }
+                    reconnectAttempts = 0; // 再接続カウンターをリセット
+                    initWebSocket();
+                });
+            }
+            
             // 少し遅延させてから接続（ページが完全に読み込まれた後）
-            setTimeout(() => {
-                initWebSocket();
-            }, 500);
+            // 自動接続を無効にする場合は、この部分をコメントアウトしてください
+            // setTimeout(() => {
+            //     updateWebSocketUrl();
+            //     initWebSocket();
+            // }, 500);
         });
         
         // ページを閉じる前にWebSocket接続を閉じる
