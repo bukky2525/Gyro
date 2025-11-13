@@ -70,48 +70,49 @@
         /* サイドメニュー */
         .side-menu {
             position: fixed;
-            top: 0;
-            left: -300px;
-            width: 280px;
-            height: 100vh;
+            top: -100vh;
+            left: 0;
+            width: 100%;
+            height: auto;
+            max-height: 300px;
             background: white;
-            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.2);
-            transition: left 0.3s;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            transition: top 0.3s;
             z-index: 999;
-            padding: 80px 20px 20px;
+            padding: 60px 20px 20px;
             overflow-y: auto;
         }
 
         .side-menu.active {
-            left: 0;
+            top: 0;
         }
 
         .side-menu h2 {
-            margin-bottom: 20px;
+            margin-bottom: 15px;
             color: #333;
-            font-size: 24px;
+            font-size: 20px;
         }
 
         .mode-selector {
-            margin-bottom: 30px;
+            margin-bottom: 20px;
         }
 
         .mode-selector h3 {
-            margin-bottom: 15px;
+            margin-bottom: 10px;
             color: #666;
-            font-size: 18px;
+            font-size: 16px;
         }
 
         .mode-btn {
-            display: block;
-            width: 100%;
-            padding: 15px;
-            margin-bottom: 10px;
+            display: inline-block;
+            width: 48%;
+            padding: 12px;
+            margin: 5px 1%;
             background: #f0f0f0;
             border: 2px solid transparent;
             border-radius: 8px;
             cursor: pointer;
-            font-size: 16px;
+            font-size: 14px;
             transition: all 0.3s;
         }
 
@@ -134,7 +135,7 @@
             width: 100%;
             height: 100vh;
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
             justify-content: center;
             align-items: center;
             padding: 20px;
@@ -143,23 +144,27 @@
         .container {
             background: rgba(255, 255, 255, 0.95);
             border-radius: 20px;
-            padding: 30px;
-            max-width: 600px;
+            padding: 20px 30px;
+            max-width: 90%;
             width: 100%;
+            max-height: 90vh;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
         }
 
         h1 {
             color: #333;
-            margin-bottom: 20px;
+            margin-bottom: 10px;
             text-align: center;
-            font-size: 24px;
+            font-size: 18px;
         }
 
         .status {
-            font-size: 1.1em;
-            margin: 20px 0;
-            padding: 15px;
+            font-size: 0.9em;
+            margin: 10px 0;
+            padding: 10px;
             background-color: #f0f0f0;
             border-radius: 8px;
             text-align: center;
@@ -181,16 +186,13 @@
             display: none;
         }
 
-        #gyroMode.active {
-            display: block;
-        }
-
         .gyro-value {
-            margin: 10px 0;
-            padding: 12px;
+            margin: 5px 0;
+            padding: 8px 12px;
             background-color: white;
             border-left: 4px solid #4CAF50;
             border-radius: 4px;
+            font-size: 0.9em;
         }
 
         .gyro-label {
@@ -207,17 +209,16 @@
         }
 
         button {
-            font-size: 1.1em;
-            padding: 12px 25px;
+            font-size: 0.9em;
+            padding: 10px 20px;
             background-color: #2196F3;
             color: white;
             border: none;
             border-radius: 8px;
             cursor: pointer;
-            margin: 10px 5px;
+            margin: 5px 0;
             transition: background-color 0.3s;
             width: 100%;
-            max-width: 300px;
         }
 
         button:hover {
@@ -250,13 +251,13 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            margin: 40px 0;
+            margin: 20px 0;
             position: relative;
         }
 
         .stick-base {
-            width: 200px;
-            height: 200px;
+            width: 150px;
+            height: 150px;
             border-radius: 50%;
             background: rgba(33, 150, 243, 0.2);
             border: 3px solid rgba(33, 150, 243, 0.5);
@@ -266,8 +267,8 @@
         }
 
         .stick-knob {
-            width: 70px;
-            height: 70px;
+            width: 50px;
+            height: 50px;
             border-radius: 50%;
             background: rgba(33, 150, 243, 0.9);
             border: 3px solid #1976D2;
@@ -287,16 +288,55 @@
 
         .instructions {
             background: #e3f2fd;
-            padding: 15px;
+            padding: 10px 15px;
             border-radius: 8px;
-            margin-bottom: 20px;
-            font-size: 14px;
-            line-height: 1.6;
+            margin-bottom: 15px;
+            font-size: 12px;
+            line-height: 1.5;
         }
 
         .instructions h3 {
-            margin-bottom: 10px;
+            margin-bottom: 8px;
             color: #1976d2;
+            font-size: 14px;
+        }
+
+        .instructions ul {
+            margin-top: 5px;
+        }
+
+        .instructions li {
+            margin: 3px 0;
+        }
+
+        /* ジャイロモードの横並びレイアウト */
+        #gyroMode.active {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .gyro-controls {
+            display: flex;
+            flex-direction: row;
+            gap: 15px;
+            align-items: flex-start;
+        }
+
+        .gyro-controls-left {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .gyro-controls-right {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .gyro-data-container {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
         }
     </style>
 </head>
@@ -328,7 +368,7 @@
                 <div class="instructions">
                     <h3>ジャイロモード</h3>
                     <p>iPhoneを横持ちで操作します</p>
-                    <ul style="text-align: left; padding-left: 20px; margin-top: 10px;">
+                    <ul>
                         <li>スピーカーが左、充電ポートが右</li>
                         <li>電源ボタンが上、音量ボタンが下</li>
                         <li>X軸（gamma）が+ → 前進</li>
@@ -338,19 +378,24 @@
                     </ul>
                 </div>
 
-                <p id="status" class="status disconnected">「ジャイロを有効化」ボタンを押してジャイロセンサーの許可を与えてください。</p>
-                <button id="enableGyroBtn">ジャイロを有効化</button>
-                
-                <div id="data">
-                    <div class="gyro-value">
-                        <span class="gyro-label">Beta (Y軸):</span>
-                        <span class="gyro-number" id="beta">---</span>
-                        <span class="gyro-unit">°</span>
+                <div class="gyro-controls">
+                    <div class="gyro-controls-left">
+                        <p id="status" class="status disconnected">「ジャイロを有効化」ボタンを押してジャイロセンサーの許可を与えてください。</p>
+                        <button id="enableGyroBtn">ジャイロを有効化</button>
                     </div>
-                    <div class="gyro-value">
-                        <span class="gyro-label">Gamma (X軸):</span>
-                        <span class="gyro-number" id="gamma">---</span>
-                        <span class="gyro-unit">°</span>
+                    <div class="gyro-controls-right">
+                        <div id="data" class="gyro-data-container">
+                            <div class="gyro-value">
+                                <span class="gyro-label">Beta (Y軸):</span>
+                                <span class="gyro-number" id="beta">---</span>
+                                <span class="gyro-unit">°</span>
+                            </div>
+                            <div class="gyro-value">
+                                <span class="gyro-label">Gamma (X軸):</span>
+                                <span class="gyro-number" id="gamma">---</span>
+                                <span class="gyro-unit">°</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -360,7 +405,7 @@
                 <div class="instructions">
                     <h3>スティックモード</h3>
                     <p>スティックをドラッグして移動します</p>
-                    <ul style="text-align: left; padding-left: 20px; margin-top: 10px;">
+                    <ul>
                         <li>上にドラッグ → 前進</li>
                         <li>下にドラッグ → 後退</li>
                         <li>左にドラッグ → 左移動</li>
