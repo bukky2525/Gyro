@@ -329,10 +329,10 @@
                     <h3>ジャイロモード</h3>
                     <p>スマホを横持ちで操作します（充電ポートが右側）</p>
                     <ul style="text-align: left; padding-left: 20px; margin-top: 10px;">
-                        <li>デバイスを前に傾ける → 前進</li>
-                        <li>デバイスを後ろに傾ける → 後退</li>
-                        <li>デバイスを右に傾ける → 右移動</li>
-                        <li>デバイスを左に傾ける → 左移動</li>
+                        <li>Y軸が+ → 前進</li>
+                        <li>Y軸が- → 後退</li>
+                        <li>X軸が- → 右移動</li>
+                        <li>X軸が+ → 左移動</li>
                     </ul>
                 </div>
 
@@ -563,33 +563,30 @@
                     if (now - lastSendTime < SEND_INTERVAL) return;
                     lastSendTime = now;
 
-                    // 移動方向を計算（横持ち：充電ポートが右側）
-                    // 横持ちでは座標軸が90度回転する
-                    // beta: デバイスの前後傾き（縦持ちではY軸、横持ちではX軸として機能）
-                    // gamma: デバイスの左右傾き（縦持ちではX軸、横持ちではY軸として機能）
+                    // 移動方向を計算（横持ち）
+                    // beta: Y軸（前後）-90 to 90
+                    // gamma: X軸（左右）-180 to 180
                     const threshold = 15; // 傾きの閾値（度）
                     
                     let moveZ = 0;
                     let moveX = 0;
 
-                    // 横持ちでの前後移動（gammaを使用）
-                    // 横持ちで前に傾ける（gammaが負）→ 前進
-                    // 横持ちで後ろに傾ける（gammaが正）→ 後退
-                    if (gamma < -threshold) {
-                        moveZ = 1; // gammaが- → 前進
-                    } else if (gamma > threshold) {
-                        moveZ = -1; // gammaが+ → 後退
+                    // 前後（Y軸）
+                    // Y軸が+のときは前に進む、Y軸が-のとき後ろに進む
+                    if (beta > threshold) {
+                        moveZ = 1; // Y軸が+ → 前進
+                    } else if (beta < -threshold) {
+                        moveZ = -1; // Y軸が- → 後退
                     } else {
                         moveZ = 0; // 閾値内の場合は0にリセット
                     }
 
-                    // 横持ちでの左右移動（betaを使用）
-                    // 横持ちで右に傾ける（betaが正）→ 右移動
-                    // 横持ちで左に傾ける（betaが負）→ 左移動
-                    if (beta > threshold) {
-                        moveX = 1; // betaが+ → 右
-                    } else if (beta < -threshold) {
-                        moveX = -1; // betaが- → 左
+                    // 左右（X軸）- 全部逆
+                    // X軸が-のときは右に進む、X軸が+のときは左に進む
+                    if (gamma < -threshold) {
+                        moveX = 1; // X軸が- → 右
+                    } else if (gamma > threshold) {
+                        moveX = -1; // X軸が+ → 左
                     } else {
                         moveX = 0; // 閾値内の場合は0にリセット
                     }
