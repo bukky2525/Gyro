@@ -6,13 +6,16 @@
     <meta name="screen-orientation" content="landscape">
     <title>スマホコントローラー</title>
     
-    <!-- WebSocket接続用（標準のWebSocket APIを使用） -->
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
     
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            touch-action: none;
             -webkit-touch-callout: none;
             -webkit-user-select: none;
             user-select: none;
@@ -20,18 +23,17 @@
 
         html, body {
             width: 100%;
-            min-height: 100vh;
+            height: 100%;
             margin: 0;
             padding: 0;
-            touch-action: pan-y pan-x; /* スクロールを有効化 */
-            overflow-x: hidden;
-            overflow-y: auto;
         }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
+            overflow-x: hidden;
+            overflow-y: auto;
             position: relative;
         }
 
@@ -81,14 +83,13 @@
             left: 0;
             width: 100%;
             height: auto;
-            max-height: 80vh;
+            max-height: 300px;
             background: white;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
             transition: top 0.3s;
             z-index: 999;
             padding: 60px 20px 20px;
             overflow-y: auto;
-            touch-action: pan-y; /* メニュー内のスクロールを有効化 */
         }
 
         .side-menu.active {
@@ -147,7 +148,6 @@
             justify-content: center;
             align-items: flex-start;
             padding: 15px;
-            touch-action: pan-y pan-x; /* スクロールを有効化 */
         }
 
         .container {
@@ -380,24 +380,6 @@
             <button class="mode-btn active" id="gyroModeBtn">ジャイロモード</button>
             <button class="mode-btn" id="dpadModeBtn">スティック</button>
         </div>
-        <div class="mode-selector" style="margin-top: 20px;">
-            <h3>WebSocket接続設定</h3>
-            <label for="serverIpInput" style="display: block; margin-bottom: 5px; font-size: 14px; color: #666;">サーバーIPアドレス:</label>
-            <input type="text" id="serverIpInput" placeholder="例: 192.168.1.100" 
-                   style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 4px; font-size: 14px; margin-bottom: 5px;"
-                   value="localhost">
-            <label for="serverPortInput" style="display: block; margin-bottom: 5px; font-size: 14px; color: #666;">ポート番号:</label>
-            <input type="number" id="serverPortInput" placeholder="8080" 
-                   style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 4px; font-size: 14px; margin-bottom: 10px;"
-                   value="8080">
-            <button id="connectBtn" style="width: 100%; padding: 10px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">
-                接続
-            </button>
-            <p style="font-size: 12px; color: #666; margin-top: 10px;">
-                Unity側のIPアドレスを入力してください。<br>
-                例: 192.168.1.100:8080
-            </p>
-        </div>
     </div>
 
     <!-- メインコンテンツ -->
@@ -494,204 +476,22 @@
             setTimeout(lockOrientation, 100);
         });
 
-        // WebSocket設定
-        // Unity側のWebSocketサーバーに接続
-        // ローカルネットワークの場合: ws://[Unity PCのIPアドレス]:8080
-        // 例: ws://192.168.1.100:8080
-        // ローカルホストの場合: ws://localhost:8080
-        let WEBSOCKET_URL = 'ws://localhost:8080'; // WebSocketサーバーのURL（動的に変更可能）
-        let websocket = null;
-        let isWebSocketConnected = false;
-        let reconnectAttempts = 0;
-        const MAX_RECONNECT_ATTEMPTS = 10;
-        const RECONNECT_DELAY = 3000; // 3秒
-        let reconnectTimer = null;
-        
-        // WebSocket URLを更新
-        function updateWebSocketUrl() {
-            const ipInput = document.getElementById('serverIpInput');
-            const portInput = document.getElementById('serverPortInput');
-            if (ipInput && portInput) {
-                const ip = ipInput.value.trim() || 'localhost';
-                const port = portInput.value.trim() || '8080';
-                WEBSOCKET_URL = `ws://${ip}:${port}`;
-                console.log(`WebSocket URLを更新しました: ${WEBSOCKET_URL}`);
-            }
-        }
-        
-        // WebSocket接続を初期化
-        function initWebSocket() {
-            // URLを更新（念のため）
-            updateWebSocketUrl();
-            
-            // 既存の接続を閉じる
-            if (websocket && websocket.readyState !== WebSocket.CLOSED) {
-                websocket.close();
-            }
-            
-            try {
-                console.log(`WebSocket接続を試みます: ${WEBSOCKET_URL}`);
-                websocket = new WebSocket(WEBSOCKET_URL);
-                
-                websocket.onopen = () => {
-                    isWebSocketConnected = true;
-                    reconnectAttempts = 0;
-                    console.log('WebSocket接続が開きました');
-                    if (statusEl) {
-                        statusEl.innerText = 'WebSocket接続が完了しました';
-                        statusEl.className = 'status connected';
-                    }
-                    // 再接続タイマーをクリア
-                    if (reconnectTimer) {
-                        clearTimeout(reconnectTimer);
-                        reconnectTimer = null;
-                    }
-                    // 接続ボタンを更新
-                    const connectBtn = document.getElementById('connectBtn');
-                    if (connectBtn) {
-                        connectBtn.disabled = false;
-                        connectBtn.textContent = '再接続';
-                        connectBtn.style.backgroundColor = '#4CAF50';
-                    }
-                };
-                
-                websocket.onclose = (event) => {
-                    isWebSocketConnected = false;
-                    const closeReason = event.code === 1000 ? '正常終了' : 
-                                      event.code === 1001 ? 'エンドポイントが離脱' :
-                                      event.code === 1002 ? 'プロトコルエラー' :
-                                      event.code === 1003 ? 'データ型エラー' :
-                                      event.code === 1006 ? '異常終了（接続エラー）' :
-                                      event.code === 1011 ? 'サーバーエラー' :
-                                      `コード: ${event.code}`;
-                    console.log(`WebSocket接続が閉じました (${closeReason}, 理由: ${event.reason || 'なし'})`);
-                    if (statusEl) {
-                        if (event.code === 1006) {
-                            statusEl.innerText = `接続エラー: サーバーに接続できません (${WEBSOCKET_URL})`;
-                        } else {
-                            statusEl.innerText = `WebSocket接続が切断されました (${closeReason})`;
-                        }
-                        statusEl.className = 'status disconnected';
-                    }
-                    // 接続ボタンを更新
-                    const connectBtn = document.getElementById('connectBtn');
-                    if (connectBtn) {
-                        connectBtn.disabled = false;
-                        connectBtn.textContent = '再接続';
-                        connectBtn.style.backgroundColor = '#4CAF50';
-                    }
-                    // 再接続を試みる（1006以外の場合、または手動接続の場合）
-                    if (event.code !== 1006 || reconnectAttempts === 0) {
-                        attemptReconnect();
-                    }
-                };
-                
-                websocket.onerror = (error) => {
-                    console.error('WebSocketエラー:', error);
-                    console.error(`接続URL: ${WEBSOCKET_URL}`);
-                    console.error('接続できない可能性のある原因:');
-                    console.error('1. Unity側のWebSocketサーバーが起動していない');
-                    console.error('2. IPアドレスまたはポート番号が間違っている');
-                    console.error('3. ファイアウォールがポートをブロックしている');
-                    console.error('4. スマホとPCが同じネットワークに接続されていない');
-                    if (statusEl && !isWebSocketConnected) {
-                        statusEl.innerText = `接続エラー: ${WEBSOCKET_URL} に接続できません`;
-                        statusEl.className = 'status disconnected';
-                    }
-                };
-                
-                websocket.onmessage = (event) => {
-                    // サーバーからのメッセージを受信（必要に応じて処理）
-                    try {
-                        const data = JSON.parse(event.data);
-                        if (data.type === 'connected') {
-                            console.log('サーバーからのメッセージ:', data.message);
-                        }
-                    } catch (error) {
-                        // JSONでない場合はそのまま表示
-                        console.log('WebSocketメッセージ受信:', event.data);
-                    }
-                };
-            } catch (error) {
-                console.error('WebSocket初期化エラー:', error);
-                if (statusEl) {
-                    statusEl.innerText = `WebSocket初期化エラー: ${error.message}`;
-                    statusEl.className = 'status disconnected';
-                }
-                attemptReconnect();
-            }
-        }
-        
-        // 再接続を試みる
-        function attemptReconnect() {
-            if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-                reconnectAttempts++;
-                console.log(`再接続を試みます (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
-                if (statusEl && reconnectAttempts > 1) {
-                    statusEl.innerText = `再接続中... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`;
-                    statusEl.className = 'status disconnected';
-                }
-                reconnectTimer = setTimeout(() => {
-                    if (!isWebSocketConnected) {
-                        initWebSocket();
-                    }
-                }, RECONNECT_DELAY);
-            } else {
-                console.error('最大再接続回数に達しました');
-                if (statusEl) {
-                    statusEl.innerText = 'WebSocket接続に失敗しました。ページをリロードしてください。';
-                    statusEl.className = 'status disconnected';
-                }
-            }
-        }
-        
-        // ページ読み込み時にWebSocket接続を開始（自動接続を無効にする場合はコメントアウト）
-        window.addEventListener('load', () => {
-            // 接続ボタンのイベントリスナー
-            const connectBtn = document.getElementById('connectBtn');
-            if (connectBtn) {
-                connectBtn.addEventListener('click', () => {
-                    updateWebSocketUrl();
-                    // 既存の接続を閉じる
-                    if (websocket && websocket.readyState !== WebSocket.CLOSED) {
-                        websocket.close();
-                    }
-                    reconnectAttempts = 0; // 再接続カウンターをリセット
-                    
-                    // ボタンを無効化
-                    connectBtn.disabled = true;
-                    connectBtn.textContent = '接続中...';
-                    
-                    // 接続を試みる
-                    initWebSocket();
-                    
-                    // 5秒後にボタンを再有効化（接続が完了しない場合）
-                    setTimeout(() => {
-                        if (!isWebSocketConnected) {
-                            connectBtn.disabled = false;
-                            connectBtn.textContent = '接続';
-                        }
-                    }, 5000);
-                });
-            }
-            
-            // 少し遅延させてから接続（ページが完全に読み込まれた後）
-            // 自動接続を無効にする場合は、この部分をコメントアウトしてください
-            // setTimeout(() => {
-            //     updateWebSocketUrl();
-            //     initWebSocket();
-            // }, 500);
-        });
-        
-        // ページを閉じる前にWebSocket接続を閉じる
-        window.addEventListener('beforeunload', () => {
-            if (reconnectTimer) {
-                clearTimeout(reconnectTimer);
-            }
-            if (websocket && isWebSocketConnected) {
-                websocket.close();
-            }
-        });
+        // Firebase設定
+        const firebaseConfig = {
+            apiKey: "AIzaSyDDbQ1fClyVJgXeYlRPr9KVmpN8Z0L-ceY",
+            authDomain: "gyro-67262.firebaseapp.com",
+            databaseURL: "https://gyro-67262-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "gyro-67262",
+            storageBucket: "gyro-67262.firebasestorage.app",
+            messagingSenderId: "334654487209",
+            appId: "1:334654487209:web:6bdbb65a93f107db1bc7b8",
+            measurementId: "G-CXFVW3T368"
+        };
+
+        // Firebase初期化
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        const controlRef = database.ref('control/movement');
 
         // UI要素
         const hamburgerMenu = document.getElementById('hamburgerMenu');
@@ -768,9 +568,9 @@
             sideMenu.classList.remove('active');
         }
 
-        // WebSocket経由で移動データを送信（値が変更されたときだけ送信）
+        // Firebaseに移動データを送信（値が変更されたときだけ送信）
         function sendMovement(x, z) {
-            // 前回の値と同じ場合は送信しない（ネットワーク負荷を軽減）
+            // 前回の値と同じ場合は送信しない（データベース負荷を軽減）
             if (lastSentX === x && lastSentZ === z) {
                 return;
             }
@@ -779,25 +579,16 @@
             lastSentX = x;
             lastSentZ = z;
             
-            // WebSocketが接続されている場合のみ送信
-            if (!isWebSocketConnected || !websocket || websocket.readyState !== WebSocket.OPEN) {
-                console.warn('WebSocketが接続されていません');
-                return;
-            }
-            
-            // JSONデータを作成
+            // 最小限のデータだけ送信（timestampは削除）
             const dataToSend = {
                 moveX: x,
-                moveZ: z,
-                timestamp: Date.now()
+                moveZ: z
             };
 
-            try {
-                // WebSocket経由でJSONデータを送信
-                websocket.send(JSON.stringify(dataToSend));
-            } catch (error) {
-                console.error("WebSocket送信エラー:", error);
-            }
+            controlRef.set(dataToSend)
+                .catch((error) => {
+                    console.error("Firebase送信エラー:", error);
+                });
         }
 
         // ジャイロモード
