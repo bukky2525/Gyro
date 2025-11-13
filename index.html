@@ -580,22 +580,22 @@
                     // gamma（X軸）が-になると後退
                     // gamma（X軸）が+になると前進
                     if (gamma < -threshold) {
-                        moveZ = -1; // gammaが- → 後退
+                        moveX = -1; // gammaが- → 後退
                     } else if (gamma > threshold) {
-                        moveZ = 1; // gammaが+ → 前進
+                        moveX = 1; // gammaが+ → 前進
                     } else {
-                        moveZ = 0; // 閾値内の場合は0にリセット
+                        moveX = 0; // 閾値内の場合は0にリセット
                     }
 
                     // 左右移動（beta（Y軸）を使用）
                     // デバイスを右に傾ける（beta > 0）→ 右移動
                     // デバイスを左に傾ける（beta < 0）→ 左移動
                     if (beta > threshold) {
-                        moveX = 1; // betaが+ → 右
+                        moveZ = 1; // betaが+ → 右
                     } else if (beta < -threshold) {
-                        moveX = -1; // betaが- → 左
+                        moveZ = -1; // betaが- → 左
                     } else {
-                        moveX = 0; // 閾値内の場合は0にリセット
+                        moveZ = 0; // 閾値内の場合は0にリセット
                     }
 
                     // 値が変更されたときだけ送信
