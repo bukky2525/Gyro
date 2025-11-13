@@ -395,12 +395,12 @@
                     <ul>
                         <li>スピーカーが左、充電ポートが右</li>
                         <li>電源ボタンが上、音量ボタンが下</li>
-                        <li>Y軸（beta、赤）が横（水平）→ 左右の傾き</li>
-                        <li>X軸（gamma、青）が縦（垂直）→ 前後の傾き</li>
-                        <li>X軸（gamma）が+ → 前進</li>
-                        <li>X軸（gamma）が- → 後退</li>
-                        <li>Y軸（beta）が+ → 右移動</li>
-                        <li>Y軸（beta）が- → 左移動</li>
+                        <li>beta（前後）→ 手前に傾ける/後ろに傾ける</li>
+                        <li>gamma（左右）→ 右に傾ける/左に傾ける</li>
+                        <li>betaが+ → 前進（手前に傾ける）</li>
+                        <li>betaが- → 後退（後ろに傾ける）</li>
+                        <li>gammaが- → 右移動（右に傾ける）</li>
+                        <li>gammaが+ → 左移動（左に傾ける）</li>
                     </ul>
                 </div>
 
@@ -651,8 +651,8 @@
             if (gyroEnabled) return;
 
             gyroListener = (event) => {
-                const beta = event.beta; // Y軸（前後）-90 to 90
-                const gamma = event.gamma; // X軸（左右）-180 to 180
+                const beta = event.beta; // 前後の傾き（-90 to 90度）
+                const gamma = event.gamma; // 左右の傾き（-180 to 180度）
 
                 if (beta !== null && gamma !== null) {
                     updateGyroDisplay(beta, gamma);
@@ -663,36 +663,34 @@
 
                     // 移動方向を計算（横持ち：iPhone）
                     // 向き: スピーカー左、充電ポート右、電源ボタン上、音量ボタン下
-                    // 横持ちでは：
-                    //   Y軸（beta、赤）が横（水平）→ 左右の傾きを検出
-                    //   X軸（gamma、青）が縦（垂直）→ 前後の傾きを検出
-                    // beta: Y軸周りの回転（-90 to 90度）- 左右の傾き
-                    // gamma: X軸周りの回転（-180 to 180度）- 前後の傾き
+                    // DeviceOrientationEventの仕様：
+                    //   beta: 前後の傾き（-90 to 90度）- 縦持ちでも横持ちでも前後
+                    //   gamma: 左右の傾き（-180 to 180度）- 縦持ちでも横持ちでも左右
                     const threshold = 15; // 傾きの閾値（度）
                     
                     let moveZ = 0;
                     let moveX = 0;
 
-                    // 前後移動（gamma（X軸、青）を使用）
-                    // 横持ちでX軸（青）が縦になる
-                    // gamma > 0: 前に傾ける → 前進
-                    // gamma < 0: 後ろに傾ける → 後退
-                    if (gamma > threshold) {
-                        moveZ = 1; // gammaが+ → 前進
-                    } else if (gamma < -threshold) {
-                        moveZ = -1; // gammaが- → 後退
+                    // 前後移動（betaを使用）
+                    // DeviceOrientationEventでは、betaが前後の傾きを表す
+                    // 手前に傾ける（画面を上に向ける）= betaが増加 → 前進
+                    // 後ろに傾ける（画面を下に向ける）= betaが減少 → 後退
+                    if (beta > threshold) {
+                        moveZ = 1; // betaが+ → 前進（手前に傾ける）
+                    } else if (beta < -threshold) {
+                        moveZ = -1; // betaが- → 後退（後ろに傾ける）
                     } else {
                         moveZ = 0; // 閾値内の場合は0にリセット
                     }
 
-                    // 左右移動（beta（Y軸、赤）を使用）
-                    // 横持ちでY軸（赤）が横になる
-                    // beta > 0: 右に傾ける → 右移動
-                    // beta < 0: 左に傾ける → 左移動
-                    if (beta > threshold) {
-                        moveX = 1; // betaが+ → 右
-                    } else if (beta < -threshold) {
-                        moveX = -1; // betaが- → 左
+                    // 左右移動（gammaを使用）
+                    // DeviceOrientationEventでは、gammaが左右の傾きを表す
+                    // 右に傾ける（充電ポート側を下げる）= gammaが負 → 右移動
+                    // 左に傾ける（スピーカー側を下げる）= gammaが正 → 左移動
+                    if (gamma < -threshold) {
+                        moveX = 1; // gammaが- → 右
+                    } else if (gamma > threshold) {
+                        moveX = -1; // gammaが+ → 左
                     } else {
                         moveX = 0; // 閾値内の場合は0にリセット
                     }
