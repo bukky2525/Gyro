@@ -396,11 +396,11 @@
                         <li>スピーカーが左、充電ポートが右</li>
                         <li>電源ボタンが上、音量ボタンが下</li>
                         <li>beta（左右）→ beta -90は左、beta 90は右</li>
-                        <li>gamma（前後）→ gamma 90が前、gamma -90が後ろ</li>
+                        <li>gamma（前後）→ 前に傾ける/手前に傾ける</li>
                         <li>betaが- → 左移動</li>
                         <li>betaが+ → 右移動</li>
-                        <li>gammaが+ → 前進</li>
-                        <li>gammaが- → 後退</li>
+                        <li>前に傾ける（gamma+）→ 前進</li>
+                        <li>手前に傾ける（gamma-）→ 後退</li>
                     </ul>
                 </div>
 
@@ -683,11 +683,12 @@
 
                     // 前後移動（gammaを使用）
                     // gamma: 前後の傾き（-90 to 90度）
-                    // gamma 90が前、gamma -90が後ろ
+                    // 前に傾けた時（gammaが正）→ 前進
+                    // 手前に傾けた時（gammaが負）→ 後退
                     if (gamma > threshold) {
-                        moveZ = 1; // gammaが+ → 前進
+                        moveZ = 1; // gammaが+ → 前進（前に傾ける）
                     } else if (gamma < -threshold) {
-                        moveZ = -1; // gammaが- → 後退
+                        moveZ = -1; // gammaが- → 後退（手前に傾ける）
                     } else {
                         moveZ = 0; // 閾値内の場合は0にリセット
                     }
