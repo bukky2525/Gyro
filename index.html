@@ -327,12 +327,12 @@
             <div id="gyroMode" class="active">
                 <div class="instructions">
                     <h3>ジャイロモード</h3>
-                    <p>スマホを縦持ちで操作します</p>
+                    <p>スマホを横持ちで操作します（充電ポートが右側）</p>
                     <ul style="text-align: left; padding-left: 20px; margin-top: 10px;">
-                        <li>前に倒す → 前進</li>
-                        <li>後ろに傾ける → 後退</li>
-                        <li>左に傾ける → 左移動</li>
-                        <li>右に傾ける → 右移動</li>
+                        <li>Y軸が+ → 前進</li>
+                        <li>Y軸が- → 後退</li>
+                        <li>X軸が- → 右移動</li>
+                        <li>X軸が+ → 左移動</li>
                     </ul>
                 </div>
 
@@ -341,12 +341,12 @@
                 
                 <div id="data">
                     <div class="gyro-value">
-                        <span class="gyro-label">Beta (X軸):</span>
+                        <span class="gyro-label">Beta (Y軸):</span>
                         <span class="gyro-number" id="beta">---</span>
                         <span class="gyro-unit">°</span>
                     </div>
                     <div class="gyro-value">
-                        <span class="gyro-label">Gamma (Y軸):</span>
+                        <span class="gyro-label">Gamma (X軸):</span>
                         <span class="gyro-number" id="gamma">---</span>
                         <span class="gyro-unit">°</span>
                     </div>
@@ -553,8 +553,8 @@
             if (gyroEnabled) return;
 
             gyroListener = (event) => {
-                const beta = event.beta; // X軸（前後）-90 to 90
-                const gamma = event.gamma; // Y軸（左右）-180 to 180
+                const beta = event.beta; // Y軸（前後）-90 to 90
+                const gamma = event.gamma; // X軸（左右）-180 to 180
 
                 if (beta !== null && gamma !== null) {
                     updateGyroDisplay(beta, gamma);
@@ -563,30 +563,30 @@
                     if (now - lastSendTime < SEND_INTERVAL) return;
                     lastSendTime = now;
 
-                    // 移動方向を計算（縦持ち）
-                    // beta: 前に倒すと正の値、後ろに傾けると負の値
-                    // gamma: 左に傾けると負の値、右に傾けると正の値
+                    // 移動方向を計算（横持ち）
+                    // beta: Y軸（前後）-90 to 90
+                    // gamma: X軸（左右）-180 to 180
                     const threshold = 15; // 傾きの閾値（度）
                     
                     let moveZ = 0;
                     let moveX = 0;
 
-                    // 前後（上下を修正：符号を反転）
-                    // Unity側では vertical = firebaseVertical なので、moveZ=1で前進、moveZ=-1で後退
-                    // ただし、実際の動作が逆だったため符号を反転
+                    // 前後（Y軸）
+                    // Y軸が+のときは前に進む、Y軸が-のとき後ろに進む
                     if (beta > threshold) {
-                        moveZ = -1; // 前に倒す → 前進（符号反転で修正）
+                        moveZ = 1; // Y軸が+ → 前進
                     } else if (beta < -threshold) {
-                        moveZ = 1; // 後ろに傾ける → 後退（符号反転で修正）
+                        moveZ = -1; // Y軸が- → 後退
                     } else {
                         moveZ = 0; // 閾値内の場合は0にリセット
                     }
 
-                    // 左右
+                    // 左右（X軸）- 全部逆
+                    // X軸が-のときは右に進む、X軸が+のときは左に進む
                     if (gamma < -threshold) {
-                        moveX = -1; // 左
+                        moveX = 1; // X軸が- → 右
                     } else if (gamma > threshold) {
-                        moveX = 1; // 右
+                        moveX = -1; // X軸が+ → 左
                     } else {
                         moveX = 0; // 閾値内の場合は0にリセット
                     }
