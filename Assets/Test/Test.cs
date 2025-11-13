@@ -276,8 +276,9 @@ public class Test : MonoBehaviour
         // Firebase入力を優先
         if (useFirebaseInput && hasFirebaseInput)
         {
-            horizontal = firebaseHorizontal;
-            vertical = firebaseVertical; // moveZ=1で前、moveZ=-1で後ろ（Web側で正しい方向に設定済み）
+            // moveXとmoveZを入れ替え
+            horizontal = firebaseHorizontal; // moveXが左右（負=左、正=右）
+            vertical = firebaseVertical; // moveZが前後（負=後ろ、正=前）
         }
         // 通常入力（WASDキーまたは左スティック）
         else if (allowNormalInput)
