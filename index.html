@@ -13,7 +13,6 @@
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            touch-action: none;
             -webkit-touch-callout: none;
             -webkit-user-select: none;
             user-select: none;
@@ -21,17 +20,18 @@
 
         html, body {
             width: 100%;
-            height: 100%;
+            min-height: 100vh;
             margin: 0;
             padding: 0;
+            touch-action: pan-y pan-x; /* スクロールを有効化 */
+            overflow-x: hidden;
+            overflow-y: auto;
         }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            overflow-x: hidden;
-            overflow-y: auto;
             position: relative;
         }
 
@@ -81,13 +81,14 @@
             left: 0;
             width: 100%;
             height: auto;
-            max-height: 300px;
+            max-height: 80vh;
             background: white;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
             transition: top 0.3s;
             z-index: 999;
             padding: 60px 20px 20px;
             overflow-y: auto;
+            touch-action: pan-y; /* メニュー内のスクロールを有効化 */
         }
 
         .side-menu.active {
@@ -146,6 +147,7 @@
             justify-content: center;
             align-items: flex-start;
             padding: 15px;
+            touch-action: pan-y pan-x; /* スクロールを有効化 */
         }
 
         .container {
@@ -544,23 +546,56 @@
                         clearTimeout(reconnectTimer);
                         reconnectTimer = null;
                     }
+                    // 接続ボタンを更新
+                    const connectBtn = document.getElementById('connectBtn');
+                    if (connectBtn) {
+                        connectBtn.disabled = false;
+                        connectBtn.textContent = '再接続';
+                        connectBtn.style.backgroundColor = '#4CAF50';
+                    }
                 };
                 
                 websocket.onclose = (event) => {
                     isWebSocketConnected = false;
-                    console.log(`WebSocket接続が閉じました (コード: ${event.code}, 理由: ${event.reason})`);
+                    const closeReason = event.code === 1000 ? '正常終了' : 
+                                      event.code === 1001 ? 'エンドポイントが離脱' :
+                                      event.code === 1002 ? 'プロトコルエラー' :
+                                      event.code === 1003 ? 'データ型エラー' :
+                                      event.code === 1006 ? '異常終了（接続エラー）' :
+                                      event.code === 1011 ? 'サーバーエラー' :
+                                      `コード: ${event.code}`;
+                    console.log(`WebSocket接続が閉じました (${closeReason}, 理由: ${event.reason || 'なし'})`);
                     if (statusEl) {
-                        statusEl.innerText = 'WebSocket接続が切断されました';
+                        if (event.code === 1006) {
+                            statusEl.innerText = `接続エラー: サーバーに接続できません (${WEBSOCKET_URL})`;
+                        } else {
+                            statusEl.innerText = `WebSocket接続が切断されました (${closeReason})`;
+                        }
                         statusEl.className = 'status disconnected';
                     }
-                    // 再接続を試みる
-                    attemptReconnect();
+                    // 接続ボタンを更新
+                    const connectBtn = document.getElementById('connectBtn');
+                    if (connectBtn) {
+                        connectBtn.disabled = false;
+                        connectBtn.textContent = '再接続';
+                        connectBtn.style.backgroundColor = '#4CAF50';
+                    }
+                    // 再接続を試みる（1006以外の場合、または手動接続の場合）
+                    if (event.code !== 1006 || reconnectAttempts === 0) {
+                        attemptReconnect();
+                    }
                 };
                 
                 websocket.onerror = (error) => {
                     console.error('WebSocketエラー:', error);
+                    console.error(`接続URL: ${WEBSOCKET_URL}`);
+                    console.error('接続できない可能性のある原因:');
+                    console.error('1. Unity側のWebSocketサーバーが起動していない');
+                    console.error('2. IPアドレスまたはポート番号が間違っている');
+                    console.error('3. ファイアウォールがポートをブロックしている');
+                    console.error('4. スマホとPCが同じネットワークに接続されていない');
                     if (statusEl && !isWebSocketConnected) {
-                        statusEl.innerText = 'WebSocket接続エラー（再接続中...）';
+                        statusEl.innerText = `接続エラー: ${WEBSOCKET_URL} に接続できません`;
                         statusEl.className = 'status disconnected';
                     }
                 };
@@ -622,7 +657,21 @@
                         websocket.close();
                     }
                     reconnectAttempts = 0; // 再接続カウンターをリセット
+                    
+                    // ボタンを無効化
+                    connectBtn.disabled = true;
+                    connectBtn.textContent = '接続中...';
+                    
+                    // 接続を試みる
                     initWebSocket();
+                    
+                    // 5秒後にボタンを再有効化（接続が完了しない場合）
+                    setTimeout(() => {
+                        if (!isWebSocketConnected) {
+                            connectBtn.disabled = false;
+                            connectBtn.textContent = '接続';
+                        }
+                    }, 5000);
                 });
             }
             
