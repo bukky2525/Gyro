@@ -327,12 +327,14 @@
             <div id="gyroMode" class="active">
                 <div class="instructions">
                     <h3>ジャイロモード</h3>
-                    <p>スマホを横持ちで操作します（充電ポートが右側）</p>
+                    <p>iPhoneを横持ちで操作します</p>
                     <ul style="text-align: left; padding-left: 20px; margin-top: 10px;">
-                        <li>Y軸が+ → 前進</li>
-                        <li>Y軸が- → 後退</li>
-                        <li>X軸が- → 右移動</li>
-                        <li>X軸が+ → 左移動</li>
+                        <li>スピーカーが左、充電ポートが右</li>
+                        <li>電源ボタンが上、音量ボタンが下</li>
+                        <li>デバイスを前に傾ける → 前進</li>
+                        <li>デバイスを後ろに傾ける → 後退</li>
+                        <li>デバイスを右に傾ける → 右移動</li>
+                        <li>デバイスを左に傾ける → 左移動</li>
                     </ul>
                 </div>
 
@@ -563,30 +565,37 @@
                     if (now - lastSendTime < SEND_INTERVAL) return;
                     lastSendTime = now;
 
-                    // 移動方向を計算（横持ち）
-                    // beta: Y軸（前後）-90 to 90
-                    // gamma: X軸（左右）-180 to 180
+                    // 移動方向を計算（横持ち：iPhone）
+                    // 向き: スピーカー左、充電ポート右、電源ボタン上、音量ボタン下
+                    // beta: デバイスの前後傾き（-90 to 90度）
+                    //   beta > 0: デバイスを前に傾ける（画面側を下げる）
+                    //   beta < 0: デバイスを後ろに傾ける（画面側を上げる）
+                    // gamma: デバイスの左右傾き（-180 to 180度）
+                    //   gamma < 0: デバイスを右に傾ける（充電ポート側を下げる）
+                    //   gamma > 0: デバイスを左に傾ける（スピーカー側を下げる）
                     const threshold = 15; // 傾きの閾値（度）
                     
                     let moveZ = 0;
                     let moveX = 0;
 
-                    // 前後（Y軸）
-                    // Y軸が+のときは前に進む、Y軸が-のとき後ろに進む
+                    // 前後移動（betaを使用）
+                    // デバイスを前に傾ける（beta > 0）→ 前進
+                    // デバイスを後ろに傾ける（beta < 0）→ 後退
                     if (beta > threshold) {
-                        moveZ = 1; // Y軸が+ → 前進
+                        moveZ = 1; // betaが+ → 前進
                     } else if (beta < -threshold) {
-                        moveZ = -1; // Y軸が- → 後退
+                        moveZ = -1; // betaが- → 後退
                     } else {
                         moveZ = 0; // 閾値内の場合は0にリセット
                     }
 
-                    // 左右（X軸）- 全部逆
-                    // X軸が-のときは右に進む、X軸が+のときは左に進む
+                    // 左右移動（gammaを使用）
+                    // デバイスを右に傾ける（gamma < 0）→ 右移動
+                    // デバイスを左に傾ける（gamma > 0）→ 左移動
                     if (gamma < -threshold) {
-                        moveX = 1; // X軸が- → 右
+                        moveX = 1; // gammaが- → 右
                     } else if (gamma > threshold) {
-                        moveX = -1; // X軸が+ → 左
+                        moveX = -1; // gammaが+ → 左
                     } else {
                         moveX = 0; // 閾値内の場合は0にリセット
                     }
